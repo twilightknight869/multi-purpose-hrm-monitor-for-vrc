@@ -3,6 +3,11 @@
 # ===========================================================
 import base64 as _b64
 
+# App version & update-check endpoint
+VERSION      = "1.1.0"
+GITHUB_OWNER = "twilightknight869"                  # your GitHub username
+GITHUB_REPO  = "Multi-Purpose-HRM-Monitor-For-VRC" # your repository name
+
 # Pulsoid
 TOKEN   = "YOUR_PULSOID_TOKEN"
 WS_URL  = "wss://dev.pulsoid.net/api/v1/data/real_time"

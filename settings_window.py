@@ -284,11 +284,44 @@ class SettingsWindow(QWidget):
         self.dev_status.setStyleSheet("color: #888888; font-size: 12px;")
         dg.addWidget(self.dev_status)
 
-        if self.settings.value("beta_removed", False):
+        is_dev = self._bool_setting("beta_removed", False)
+
+        if is_dev:
             self.dev_status.setText("✓ Beta banner removed")
             self.dev_status.setStyleSheet("color: #88ff88; font-size: 12px;")
             self.dev_key_input.setEnabled(False)
             dev_btn.setEnabled(False)
+
+        # Fast Boot toggle (dev-only)
+        self.fast_boot_checkbox = QCheckBox("⚡ Fast Boot  (quarters startup time)")
+        self.fast_boot_checkbox.setChecked(self._bool_setting("fast_boot", False))
+        self.fast_boot_checkbox.setEnabled(is_dev)
+        self.fast_boot_checkbox.setStyleSheet(
+            "color: #ffaa33;" if is_dev else "color: #333333;"
+        )
+        self.fast_boot_checkbox.stateChanged.connect(
+            lambda: self.settings.setValue("fast_boot", self.fast_boot_checkbox.isChecked())
+        )
+        dg.addWidget(self.fast_boot_checkbox)
+
+        if not is_dev:
+            lock_hint = QLabel("  🔒 Unlock with developer key")
+            lock_hint.setStyleSheet("color: #2a2a2a; font-size: 11px;")
+            dg.addWidget(lock_hint)
+
+        # Reset dev status (testing — only visible when unlocked)
+        self.reset_dev_btn = QPushButton("🔄  Reset dev status  (re-lock for testing)")
+        self.reset_dev_btn.setFixedHeight(24)
+        self.reset_dev_btn.setStyleSheet(
+            "QPushButton { color: #664444; border-color: #330000; font-size: 11px; }"
+            "QPushButton:hover { color: #ff6666; border-color: #880000; }"
+        )
+        self.reset_dev_btn.setVisible(is_dev)
+        self.reset_dev_btn.clicked.connect(self._reset_dev_status)
+        dg.addWidget(self.reset_dev_btn)
+
+        # Keep refs needed by _verify_dev_key / _reset_dev_status
+        self._dev_btn = dev_btn
 
         layout.addWidget(dev_group)
 
@@ -368,7 +401,7 @@ class SettingsWindow(QWidget):
             "Include Spotify track in chatbox  (uses {track} / {artist})")
         self.spotify_in_chatbox_checkbox.setChecked(
             self._bool_setting("spotify_in_chatbox", False))
-        self.spotify_in_chatbox_checkbox.stateChanged.connect(self._preview_chatbox)
+        self.spotify_in_chatbox_checkbox.stateChanged.connect(self._on_chatbox_settings_changed)
         cg.addWidget(self.spotify_in_chatbox_checkbox)
 
         cg.addWidget(QLabel(
@@ -578,6 +611,7 @@ class SettingsWindow(QWidget):
         self.rotate_interval.setValue(int(self.settings.value("rotate_sec", STATUS_ROTATE_SEC)))
         self.rotate_interval.setSuffix("  seconds")
         self.rotate_interval.setFixedWidth(120)
+        self.rotate_interval.valueChanged.connect(self._on_chatbox_settings_changed)
         interval_row.addWidget(self.rotate_interval)
         interval_row.addStretch()
         rg.addLayout(interval_row)
@@ -688,11 +722,30 @@ class SettingsWindow(QWidget):
             self.dev_status.setText("✓ Beta banner removed! Restart overlay to apply.")
             self.dev_status.setStyleSheet("color: #88ff88; font-size: 12px;")
             self.dev_key_input.setEnabled(False)
-            self.findChild(QPushButton, "dev_btn").setEnabled(False)
+            self._dev_btn.setEnabled(False)
+            # Unlock fast boot toggle and reveal reset button
+            self.fast_boot_checkbox.setEnabled(True)
+            self.fast_boot_checkbox.setStyleSheet("color: #ffaa33;")
+            self.reset_dev_btn.setVisible(True)
         else:
             self.dev_status.setText("✗ Invalid key")
             self.dev_status.setStyleSheet("color: #ff6666; font-size: 12px;")
             self.dev_key_input.clear()
+
+    def _reset_dev_status(self):
+        """Wipe all dev flags so the boot experience can be tested fresh."""
+        self.settings.setValue("beta_removed", False)
+        self.settings.setValue("fast_boot",    False)
+        # Re-lock UI
+        self.dev_status.setText("↩ Dev status reset — re-enter key to unlock")
+        self.dev_status.setStyleSheet("color: #ffaa33; font-size: 12px;")
+        self.dev_key_input.setEnabled(True)
+        self.dev_key_input.clear()
+        self._dev_btn.setEnabled(True)
+        self.fast_boot_checkbox.setChecked(False)
+        self.fast_boot_checkbox.setEnabled(False)
+        self.fast_boot_checkbox.setStyleSheet("color: #333333;")
+        self.reset_dev_btn.setVisible(False)
 
     def _reset_osc_params(self):
         self.hr_param_input.setText(VRC_OSC_HR_PARAM)
@@ -739,6 +792,9 @@ class SettingsWindow(QWidget):
             self.vrc_preview.setText(f"⚠  Unknown placeholder {e}")
             self.vrc_char_count.setText("—")
 
+        # Push any live changes to the running OSC thread immediately
+        self._update_live_osc_cfg()
+
     def _on_chatbox_settings_changed(self):
         self._preview_chatbox()
 
@@ -755,11 +811,13 @@ class SettingsWindow(QWidget):
         if text:
             self.status_list.addItem(QListWidgetItem(text))
             self.status_entry.clear()
+            self._update_live_osc_cfg()
 
     def _remove_status(self):
         row = self.status_list.currentRow()
         if row >= 0:
             self.status_list.takeItem(row)
+            self._update_live_osc_cfg()
 
     def _move_status_up(self):
         row = self.status_list.currentRow()
@@ -767,6 +825,7 @@ class SettingsWindow(QWidget):
             item = self.status_list.takeItem(row)
             self.status_list.insertItem(row - 1, item)
             self.status_list.setCurrentRow(row - 1)
+            self._update_live_osc_cfg()
 
     def _move_status_down(self):
         row = self.status_list.currentRow()
@@ -774,6 +833,7 @@ class SettingsWindow(QWidget):
             item = self.status_list.takeItem(row)
             self.status_list.insertItem(row + 1, item)
             self.status_list.setCurrentRow(row + 1)
+            self._update_live_osc_cfg()
 
     def _copy_room_code(self):
         QApplication.clipboard().setText(self.room_code)
@@ -784,6 +844,27 @@ class SettingsWindow(QWidget):
             random.choices(_string.ascii_uppercase + _string.digits, k=ROOM_CODE_LEN))
         self.settings.setValue("room_code", self.room_code)
         self.room_code_lbl.setText(self.room_code)
+
+    def _update_live_osc_cfg(self):
+        """Push the current UI state into the shared config so the running
+        OSC thread picks up changes (statuses, template, rotation speed, etc.)
+        without requiring a restart."""
+        import signals as _sig
+        if not _sig.get_osc_cfg():
+            return   # overlay not running yet — nothing to update
+        statuses = []
+        if self.status_list is not None:
+            statuses = [self.status_list.item(i).text()
+                        for i in range(self.status_list.count())]
+        _sig.set_osc_cfg({
+            **_sig.get_osc_cfg(),
+            "chatbox_enabled":    self.chatbox_checkbox.isChecked() and OSC_OK,
+            "chatbox_template":   self.chatbox_template.text().strip() or DEFAULT_CHATBOX_TEMPLATE,
+            "spotify_in_chatbox": self.spotify_in_chatbox_checkbox.isChecked(),
+            "rotate_enabled":     self.rotate_checkbox.isChecked() and OSC_OK,
+            "statuses":           statuses,
+            "rotate_sec":         self.rotate_interval.value(),
+        })
 
     def _launch_viewer(self):
         code = self.viewer_code_input.text().strip().upper()

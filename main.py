@@ -9,6 +9,17 @@ import traceback
 from PyQt6.QtWidgets import QApplication, QMessageBox
 
 
+def _hide_console() -> None:
+    """Hide the Windows console window so only the UI is visible."""
+    try:
+        import ctypes
+        hwnd = ctypes.windll.kernel32.GetConsoleWindow()
+        if hwnd:
+            ctypes.windll.user32.ShowWindow(hwnd, 0)   # SW_HIDE = 0
+    except Exception:
+        pass   # non-Windows or no console — silently skip
+
+
 def crash_log(exc: BaseException) -> None:
     desktop  = pathlib.Path.home() / "Desktop"
     log_path = desktop / "HRMMonitor_crash.log"
@@ -20,19 +31,31 @@ def crash_log(exc: BaseException) -> None:
 
 
 def main() -> None:
+    _hide_console()
     app = QApplication(sys.argv)
     app.setStyle("Fusion")
     app.setQuitOnLastWindowClosed(False)
 
-    # These must be imported AFTER QApplication exists —
+    # Imports must happen AFTER QApplication exists —
     # they create QObjects (signal bus, widgets) at module level.
     from constants import DARK_STYLE
+    from bootloader import SplashBoot
     from settings_window import SettingsWindow
 
     app.setStyleSheet(DARK_STYLE)
 
-    win = SettingsWindow()
-    win.show()
+    # ── Boot splash ──────────────────────────────────────────────
+    splash = SplashBoot()
+    app._splash = splash          # keep alive
+
+    def _on_boot_done():
+        win = SettingsWindow()
+        app._main_window = win    # keep alive
+        win.show()
+
+    splash.finished.connect(_on_boot_done)
+    splash.show()
+
     sys.exit(app.exec())
 
 

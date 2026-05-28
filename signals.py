@@ -23,6 +23,7 @@ bus = _Bus()
 _lock               = threading.Lock()
 _shared_bpm: int    = 0
 _shared_spotify: dict = {"track": "", "artist": "", "playing": False}
+_shared_osc_cfg: dict = {}   # live OSC config — updated from UI without restart
 
 
 def get_bpm() -> int:
@@ -42,6 +43,15 @@ def set_spotify(info: dict) -> None:
     global _shared_spotify
     with _lock:
         _shared_spotify = dict(info)
+
+def get_osc_cfg() -> dict:
+    with _lock:
+        return dict(_shared_osc_cfg)
+
+def set_osc_cfg(cfg: dict) -> None:
+    global _shared_osc_cfg
+    with _lock:
+        _shared_osc_cfg = dict(cfg)
 
 
 # Wire Qt signal → shared state so threads always have the latest value

@@ -191,27 +191,34 @@ def osc_thread(cfg: dict):
         statuses (list[str]),
         rotate_sec (int),
     """
-    client            = osc_udp.SimpleUDPClient(cfg["osc_ip"], cfg["osc_port"])
-    chatbox_enabled   = cfg.get("chatbox_enabled", False)
-    template          = cfg.get("chatbox_template", "{icon} {bpm} BPM  [{bar}]")
-    spotify_in_box    = cfg.get("spotify_in_chatbox", False)
-    spotify_osc       = cfg.get("spotify_osc_enabled", True)
-    hr_param          = cfg.get("hr_param",  VRC_OSC_HR_PARAM)
-    pct_param         = cfg.get("pct_param", VRC_OSC_PCT_PARAM)
+    # Seed the live shared config so the UI can update it without restart
+    sig.set_osc_cfg(cfg)
 
-    # Status rotation state — managed entirely inside this thread
-    # so there is only ONE writer to /chatbox/input at all times.
-    statuses          = cfg.get("statuses", [])
-    rotate_enabled    = cfg.get("rotate_enabled", False) and bool(statuses)
-    rotate_sec        = max(int(cfg.get("rotate_sec", STATUS_ROTATE_SEC)), int(CHATBOX_INTERVAL_SEC) + 1)
-    status_idx        = 0
-    last_status_swap  = time.time()   # when we last changed the active status
+    # Fixed at startup — changing these requires a restart
+    client    = osc_udp.SimpleUDPClient(cfg["osc_ip"], cfg["osc_port"])
+    hr_param  = cfg.get("hr_param",  VRC_OSC_HR_PARAM)
+    pct_param = cfg.get("pct_param", VRC_OSC_PCT_PARAM)
+    spotify_osc = cfg.get("spotify_osc_enabled", True)
+
+    # Rotation bookkeeping (persists across config updates)
+    status_idx       = 0
+    last_status_swap = time.time()
 
     last_chatbox_send = 0.0
     _last_spotify     = {"track": "", "artist": ""}
 
     while True:
         try:
+            # Re-read mutable config every tick so UI changes take effect immediately
+            live        = sig.get_osc_cfg()
+            chatbox_enabled = live.get("chatbox_enabled", False)
+            template        = live.get("chatbox_template", "{icon} {bpm} BPM  [{bar}]")
+            spotify_in_box  = live.get("spotify_in_chatbox", False)
+            statuses        = live.get("statuses", [])
+            rotate_enabled  = live.get("rotate_enabled", False) and bool(statuses)
+            rotate_sec      = max(int(live.get("rotate_sec", STATUS_ROTATE_SEC)),
+                                  int(CHATBOX_INTERVAL_SEC) + 1)
+
             bpm     = sig.get_bpm()
             spotify = sig.get_spotify()
 
@@ -224,8 +231,6 @@ def osc_thread(cfg: dict):
                 if spotify_osc and spotify.get("track"):
                     track  = spotify["track"]
                     artist = spotify["artist"]
-                    # Only resend when the track actually changes to avoid
-                    # spamming VRChat with identical string params every second.
                     if track != _last_spotify["track"] or artist != _last_spotify["artist"]:
                         client.send_message("/avatar/parameters/SpotifyTrack",  track)
                         client.send_message("/avatar/parameters/SpotifyArtist", artist)
@@ -235,7 +240,10 @@ def osc_thread(cfg: dict):
                 if chatbox_enabled:
                     now = time.time()
                     if now - last_chatbox_send >= CHATBOX_INTERVAL_SEC:
-                        # Rotate the active status string on its own timer.
+                        # Clamp status_idx in case the list shrank
+                        if statuses:
+                            status_idx = status_idx % len(statuses)
+
                         if rotate_enabled:
                             if now - last_status_swap >= rotate_sec:
                                 status_idx       = (status_idx + 1) % len(statuses)
