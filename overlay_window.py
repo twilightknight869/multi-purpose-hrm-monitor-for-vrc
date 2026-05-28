@@ -15,7 +15,7 @@ from constants import (
     SHAKE_HIGH_BPM, SHAKE_HIGH_INT,
     SHAKE_MED_BPM,  SHAKE_MED_INT,
     SHAKE_LOW_BPM,  SHAKE_LOW_INT,
-    MQTT_BROKER, MQTT_PORT, MQTT_TOPIC_PREFIX,
+    ABLY_CHANNEL_PREFIX,
     OVERLAY_TRACK_MAX_LEN, OVERLAY_ARTIST_MAX_LEN,
 )
 from widgets import HeartWidget, BPMGraph
@@ -482,85 +482,93 @@ class ViewerOverlay(QWidget):
         threading.Thread(target=self._mqtt_thread, daemon=True).start()
 
     def _mqtt_thread(self):
-        import json as _json, uuid as _uuid
-        try:
-            import paho.mqtt.client as mqtt
-        except ImportError:
-            self._status_ready.emit(
-                "● install paho-mqtt first",
+        """Entry point kept for compatibility — delegates to Ably."""
+        self._ably_thread()
+
+    def _ably_thread(self):
+        """
+        Subscribes to the host's BPM channel via Ably SSE (port 443).
+        No extra library needed — pure Python urllib. Reconnects automatically.
+        """
+        import json as _json
+        import base64 as _b64
+        import urllib.request as _ur
+        import urllib.parse as _up
+        import time as _time
+
+        from PyQt6.QtCore import QSettings as _QS
+        api_key = _QS("HRMMonitor", "Settings").value("ably_api_key", "").strip()
+
+        if not api_key:
+            self._broker_ready.emit(
+                "● no Ably key — add one in Settings",
                 "color: #cc4400; background: transparent;")
             return
 
-        topic = self._topic
+        channel  = _up.quote(f"{ABLY_CHANNEL_PREFIX}/{self.room_code}", safe="")
+        sse_url  = f"https://realtime.ably.io/sse?channel={channel}&v=1.2"
+        auth_hdr = "Basic " + _b64.b64encode(api_key.encode()).decode()
 
-        def on_connect(c, userdata, flags, rc):
-            if rc == 0:
-                c.subscribe(topic, qos=0)
-                self._broker_ready.emit(
-                    "● broker connected",
-                    "color: #4488cc; background: transparent;")
-                self._status_ready.emit(
-                    "● waiting for host data…",
-                    "color: #888800; background: transparent;")
-            else:
-                self._broker_ready.emit(
-                    f"● broker refused (rc={rc})",
-                    "color: #cc4400; background: transparent;")
-
-        def on_message(c, userdata, msg):
+        while True:
             try:
-                data = _json.loads(msg.payload.decode())
-                bpm  = int(data.get("bpm", 0))
-                self._received_any = True
-                self._stop_timer.emit()   # safe cross-thread signal → stops QTimer on main thread
-                if bpm > 0:
+                self._broker_ready.emit(
+                    "● connecting to Ably…",
+                    "color: #555555; background: transparent;")
+
+                req = _ur.Request(sse_url, headers={"Authorization": auth_hdr})
+                with _ur.urlopen(req, timeout=90) as resp:
+                    self._broker_ready.emit(
+                        "● Ably connected",
+                        "color: #4488cc; background: transparent;")
                     self._status_ready.emit(
-                        "● receiving data",
-                        "color: #00cc44; background: transparent;")
-                    self._bpm_ready.emit(bpm)
-                else:
-                    self._status_ready.emit(
-                        "● host online — sensor not connected",
+                        "● waiting for host data…",
                         "color: #888800; background: transparent;")
+
+                    # Read SSE line-by-line; empty line = end of event
+                    event_lines: list[str] = []
+                    for raw in resp:
+                        line = raw.decode("utf-8", errors="ignore").rstrip("\r\n")
+                        if line == "":
+                            # Process accumulated event
+                            data_str = None
+                            for l in event_lines:
+                                if l.startswith("data:"):
+                                    data_str = l[5:].strip()
+                                    break
+                            event_lines = []
+
+                            if not data_str:
+                                continue  # heartbeat / keep-alive
+
+                            try:
+                                outer = _json.loads(data_str)
+                                # Ably wraps our payload in {"name":..., "data": "..."}
+                                raw_data = outer.get("data", "{}")
+                                inner = _json.loads(raw_data) if isinstance(raw_data, str) else raw_data
+                                bpm   = int(inner.get("bpm", 0))
+                                self._received_any = True
+                                self._stop_timer.emit()
+                                if bpm > 0:
+                                    self._status_ready.emit(
+                                        "● receiving data",
+                                        "color: #00cc44; background: transparent;")
+                                    self._bpm_ready.emit(bpm)
+                                else:
+                                    self._status_ready.emit(
+                                        "● host online — sensor not connected",
+                                        "color: #888800; background: transparent;")
+                            except Exception as _pe:
+                                self._status_ready.emit(
+                                    f"● parse error: {_pe}",
+                                    "color: #cc4400; background: transparent;")
+                        else:
+                            event_lines.append(line)
+
             except Exception as _e:
-                self._status_ready.emit(
-                    f"● data error: {_e}",
-                    "color: #cc4400; background: transparent;")
-
-        def on_disconnect(c, userdata, rc):
-            self._broker_ready.emit(
-                "● broker disconnected — reconnecting…",
-                "color: #888800; background: transparent;")
-            self._status_ready.emit(
-                "",
-                "color: #555555; background: transparent;")
-
-        client_id = f"hrm-viewer-{_uuid.uuid4().hex[:8]}"
-        try:
-            from paho.mqtt.enums import CallbackAPIVersion
-            self._mqtt_client = mqtt.Client(
-                CallbackAPIVersion.VERSION1,
-                client_id=client_id,
-                clean_session=True,
-            )
-        except ImportError:
-            self._mqtt_client = mqtt.Client(
-                client_id=client_id,
-                clean_session=True,
-            )
-
-        self._mqtt_client.on_connect    = on_connect
-        self._mqtt_client.on_message    = on_message
-        self._mqtt_client.on_disconnect = on_disconnect
-        self._mqtt_client.reconnect_delay_set(min_delay=1, max_delay=15)
-
-        try:
-            self._mqtt_client.connect(MQTT_BROKER, MQTT_PORT, keepalive=30)
-            self._mqtt_client.loop_forever()
-        except Exception as e:
-            self._broker_ready.emit(
-                f"● can't reach broker: {e}",
-                "color: #cc4400; background: transparent;")
+                self._broker_ready.emit(
+                    "● disconnected — reconnecting…",
+                    "color: #888800; background: transparent;")
+                _time.sleep(3)
 
     def _on_connect_timeout(self):
         """Fires 20 s after launch if no message ever arrived from the host."""
@@ -591,12 +599,6 @@ class ViewerOverlay(QWidget):
 
     def closeEvent(self, event):
         self._timeout_timer.stop()
-        if self._mqtt_client:
-            try:
-                self._mqtt_client.disconnect()
-                self._mqtt_client.loop_stop()
-            except Exception:
-                pass
         super().closeEvent(event)
 
     def paintEvent(self, event):

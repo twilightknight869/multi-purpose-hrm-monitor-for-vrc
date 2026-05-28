@@ -1,6 +1,7 @@
 # ===========================================================
 #  HRM Monitor — Background Threads
 # ===========================================================
+import base64
 import json
 import math
 import pathlib
@@ -8,6 +9,8 @@ import random
 import subprocess
 import threading
 import time
+import urllib.parse
+import urllib.request
 
 import websocket
 
@@ -39,7 +42,7 @@ from constants import (
     VRC_CHATBOX_INPUT, CHATBOX_INTERVAL_SEC,
     VR_OVERLAY_KEY, VR_OVERLAY_NAME, VR_OVERLAY_WIDTH,
     VR_TEXTURE_SIZE, STEAMVR_POLL_SEC,
-    MQTT_BROKER, MQTT_PORT, MQTT_TOPIC_PREFIX,
+    ABLY_CHANNEL_PREFIX,
     SPOTIFY_POLL_SEC, STATUS_ROTATE_SEC,
     BPM_HIGH, BPM_MED,
     VRC_CHATBOX_MAX_LENGTH, VRC_STATUS_MAX_LENGTH, VRC_HLINE_MAX_LENGTH,
@@ -530,83 +533,51 @@ def status_rotator_thread(cfg: dict):
 
 
 # ===========================================================
-#  Friend HR Sharing — MQTT relay  (no port forwarding needed)
+#  Friend HR Sharing — Ably Realtime  (no port forwarding needed)
 # ===========================================================
-def mqtt_share_thread(room_code: str):
+def ably_share_thread(room_code: str, api_key: str):
     """
-    Publishes live BPM to a public MQTT broker so friends can connect
-    from anywhere without port forwarding. Both sides just need the
-    6-character room code.
+    Publishes live BPM to Ably Realtime so friends can connect from
+    anywhere without port forwarding. Uses port 443 (HTTPS) so it is
+    never blocked by firewalls or NAT. No extra library required.
 
-    Requires: pip install paho-mqtt
-    Broker:   broker.emqx.io  (free, no account needed)
-    Topic:    hrm-monitor-v1/{room_code}/bpm
+    Get a free API key at https://ably.com (free tier: 6M msgs/month).
+    Enter the key once in Settings → Friend HR Sharing.
+
+    Channel: hrm-monitor-v1/{room_code}
     """
-    import uuid as _uuid
-    try:
-        import paho.mqtt.client as mqtt
-    except ImportError:
-        print("paho-mqtt not installed — run: pip install paho-mqtt")
-        sig.bus.friend_signal.emit({"type": "error",
-                                    "ip": "paho-mqtt not installed — run: pip install paho-mqtt"})
+    if not api_key:
+        print("[Share] No Ably API key set — add one in Settings")
+        sig.bus.friend_signal.emit({
+            "type": "error",
+            "ip":   "No Ably API key — add one in Settings → Friend HR Sharing",
+        })
         return
 
-    topic      = f"{MQTT_TOPIC_PREFIX}/{room_code}/bpm"
-    _connected = threading.Event()
+    channel  = urllib.parse.quote(f"{ABLY_CHANNEL_PREFIX}/{room_code}", safe="")
+    url      = f"https://rest.ably.io/channels/{channel}/messages"
+    auth_hdr = "Basic " + base64.b64encode(api_key.encode()).decode()
+    headers  = {"Authorization": auth_hdr, "Content-Type": "application/json"}
 
-    # paho-mqtt 2.x changed the on_connect signature — use VERSION1 compat
-    # shim so both v1 and v2 work with the same callback style.
-    def _make_client():
-        try:
-            from paho.mqtt.enums import CallbackAPIVersion
-            return mqtt.Client(
-                CallbackAPIVersion.VERSION1,
-                client_id=f"hrm-host-{room_code}-{_uuid.uuid4().hex[:6]}",
-                clean_session=True,
-            )
-        except ImportError:
-            # paho-mqtt < 2.0
-            return mqtt.Client(
-                client_id=f"hrm-host-{room_code}-{_uuid.uuid4().hex[:6]}",
-                clean_session=True,
-            )
-
-    def on_connect(c, userdata, flags, rc):
-        if rc == 0:
-            print(f"[Share] MQTT connected — room code: {room_code}")
-            _connected.set()
-        else:
-            print(f"[Share] MQTT connect failed rc={rc}")
-
-    def on_disconnect(c, userdata, rc):
-        _connected.clear()
-        print("[Share] MQTT disconnected — auto-reconnecting…")
-
-    client = _make_client()
-    client.on_connect    = on_connect
-    client.on_disconnect = on_disconnect
-    client.reconnect_delay_set(min_delay=1, max_delay=10)
-
-    try:
-        client.connect_async(MQTT_BROKER, MQTT_PORT, keepalive=30)
-    except Exception as e:
-        print(f"[Share] MQTT initial connect error: {e}"); return
-
-    client.loop_start()
+    print(f"[Share] Ably publishing to channel hrm-monitor-v1/{room_code}")
 
     while True:
-        if _connected.is_set():
-            bpm = sig.get_bpm()
-            try:
-                # Always publish so the viewer knows the host is alive.
-                # bpm=0 means Pulsoid not connected yet; viewer shows "--"
-                # retain=True delivers the last value instantly on subscribe.
-                client.publish(
-                    topic,
-                    json.dumps({"bpm": bpm, "alive": True}),
-                    qos=0,
-                    retain=True,
-                )
-            except Exception as e:
-                print(f"[Share] publish error: {e}")
-        time.sleep(0.5)
+        bpm     = sig.get_bpm()
+        payload = json.dumps({
+            "name": "bpm",
+            "data": json.dumps({"bpm": bpm, "alive": True}),
+        }).encode()
+        try:
+            req = urllib.request.Request(url, data=payload,
+                                         headers=headers, method="POST")
+            urllib.request.urlopen(req, timeout=6)
+        except Exception as e:
+            print(f"[Share] Ably publish error: {e}")
+        time.sleep(2)
+
+
+# Keep old name as alias so any cached imports don't break
+def mqtt_share_thread(room_code: str):
+    """Deprecated — replaced by ably_share_thread."""
+    print("[Share] mqtt_share_thread called but Ably is now used — use ably_share_thread instead")
+    return

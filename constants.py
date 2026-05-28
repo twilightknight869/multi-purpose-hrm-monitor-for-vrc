@@ -4,7 +4,7 @@
 import base64 as _b64
 
 # App version & update-check endpoint
-VERSION      = "1.2.4"
+VERSION      = "1.3.0"
 GITHUB_OWNER = "twilightknight869"                  # your GitHub username
 GITHUB_REPO  = "Multi-Purpose-HRM-Monitor-For-VRC" # your repository name
 
@@ -40,13 +40,12 @@ VR_OVERLAY_WIDTH = 0.12            # metres
 VR_TEXTURE_SIZE  = 256             # px square
 STEAMVR_POLL_SEC = 5
 
-# Friend HR sharing — MQTT relay (no port forwarding needed)
-# Both host and viewer connect to a free public MQTT broker.
+# Friend HR sharing — Ably Realtime (no port forwarding needed)
+# Uses Ably's enterprise pub/sub over port 443 (never blocked).
+# Get a free API key at https://ably.com — paste it in Settings.
 # The host generates a 6-char room code; the friend enters it.
-MQTT_BROKER       = "broker.emqx.io"   # more stable than hivemq free tier
-MQTT_PORT         = 1883
-MQTT_TOPIC_PREFIX = "hrm-monitor-v1"
-ROOM_CODE_LEN     = 6
+ABLY_CHANNEL_PREFIX = "hrm-monitor-v1"
+ROOM_CODE_LEN       = 6
 
 # Spotify polling (seconds)
 SPOTIFY_POLL_SEC = 3

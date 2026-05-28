@@ -202,8 +202,8 @@ class SettingsWindow(QWidget):
         mid_row.addWidget(opt_group, stretch=1)
         layout.addLayout(mid_row)
 
-        # ── Friend HR Sharing (MQTT — no port forwarding) ─────────
-        share_group = QGroupBox("Friend HR Sharing")
+        # ── Friend HR Sharing — Ably Realtime (no port forwarding) ──
+        share_group = QGroupBox("Friend HR Sharing  —  powered by Ably")
         sg = QVBoxLayout(share_group)
         sg.setContentsMargins(10, 6, 10, 10)
         sg.setSpacing(6)
@@ -211,6 +211,31 @@ class SettingsWindow(QWidget):
         self.share_checkbox = QCheckBox("Enable sharing  (works over the internet — no port forwarding)")
         self.share_checkbox.setChecked(self._bool_setting("share_enabled", False))
         sg.addWidget(self.share_checkbox)
+
+        # Ably API key
+        key_row = QHBoxLayout()
+        key_row.setSpacing(6)
+        key_lbl = QLabel("Ably API Key:")
+        key_lbl.setStyleSheet("color: #888888; font-size: 12px;")
+        key_lbl.setFixedWidth(90)
+        key_row.addWidget(key_lbl)
+        self.ably_key_input = QLineEdit(self.settings.value("ably_api_key", ""))
+        self.ably_key_input.setPlaceholderText("Paste your Ably API key here  (free at ably.com)")
+        self.ably_key_input.setEchoMode(QLineEdit.EchoMode.Password)
+        key_row.addWidget(self.ably_key_input)
+        show_key_btn = QPushButton("👁")
+        show_key_btn.setFixedWidth(30)
+        show_key_btn.setFixedHeight(26)
+        show_key_btn.clicked.connect(lambda: self.ably_key_input.setEchoMode(
+            QLineEdit.EchoMode.Normal
+            if self.ably_key_input.echoMode() == QLineEdit.EchoMode.Password
+            else QLineEdit.EchoMode.Password))
+        key_row.addWidget(show_key_btn)
+        sg.addLayout(key_row)
+
+        ably_hint = QLabel("Get a free key at  ably.com  →  Create app  →  Copy API key")
+        ably_hint.setStyleSheet("color: #446644; font-size: 11px;")
+        sg.addWidget(ably_hint)
 
         code_row = QHBoxLayout()
         code_row.setSpacing(8)
@@ -236,7 +261,7 @@ class SettingsWindow(QWidget):
         code_row.addWidget(new_code_btn)
         sg.addLayout(code_row)
 
-        hint = QLabel("Share this code with your friend — they enter it in the Viewer tab.")
+        hint = QLabel("Share your Room Code with your friend — they enter it in the Viewer tab.\nYour Ably key is also needed on their side (share it once via DM).")
         hint.setStyleSheet("color: #555555; font-size: 11px;")
         hint.setWordWrap(True)
         sg.addWidget(hint)
@@ -872,6 +897,8 @@ class SettingsWindow(QWidget):
             self.viewer_code_input.setPlaceholderText(f"need {ROOM_CODE_LEN} characters!")
             return
         self.settings.setValue("viewer_code", code)
+        # Save Ably key in case it was just entered on the host side
+        self.settings.setValue("ably_api_key", self.ably_key_input.text().strip())
         viewer = ViewerOverlay(code)
         QApplication.instance()._viewer = viewer
         viewer.show()
@@ -900,6 +927,7 @@ class SettingsWindow(QWidget):
             # Share
             "share_enabled": self.share_checkbox.isChecked(),
             "room_code":     self.room_code,
+            "ably_api_key":  self.ably_key_input.text().strip(),
             # OSC
             "osc_enabled":   self.osc_checkbox.isChecked() and OSC_OK,
             "osc_ip":        self.osc_ip.text().strip() or VRC_OSC_IP,
@@ -931,6 +959,7 @@ class SettingsWindow(QWidget):
             "shake":              cfg["shake_enabled"],
             "vr_enabled":         cfg["vr_enabled"],
             "share_enabled":      cfg["share_enabled"],
+            "ably_api_key":       cfg["ably_api_key"],
             "osc_enabled":        cfg["osc_enabled"],
             "osc_ip":             cfg["osc_ip"],
             "osc_port":           cfg["osc_port"],
@@ -966,8 +995,9 @@ class SettingsWindow(QWidget):
             _t.Thread(target=threads.steamvr_watcher_thread, args=(cfg,), daemon=True).start()
 
         if cfg["share_enabled"]:
-            _t.Thread(target=threads.mqtt_share_thread,
-                      args=(cfg["room_code"],), daemon=True).start()
+            _t.Thread(target=threads.ably_share_thread,
+                      args=(cfg["room_code"], cfg["ably_api_key"]),
+                      daemon=True).start()
 
         if cfg["spotify_enabled"] and cfg["spotify_client_id"] and cfg["spotify_client_secret"]:
             _t.Thread(
