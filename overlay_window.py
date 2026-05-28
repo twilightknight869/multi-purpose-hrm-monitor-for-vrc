@@ -393,12 +393,12 @@ class ViewerOverlay(QWidget):
     _bpm_ready    = pyqtSignal(int)
     _status_ready = pyqtSignal(str, str)   # (text, css-color)
     _broker_ready = pyqtSignal(str, str)   # broker line separate from data line
+    _stop_timer   = pyqtSignal()           # thread-safe way to stop the timeout timer
 
     def __init__(self, room_code: str):
         super().__init__()
         self.room_code    = room_code.strip().upper()
         self._mqtt_client = None
-        self._received_any = False
 
         self.setWindowFlags(
             Qt.WindowType.FramelessWindowHint |
@@ -466,15 +466,20 @@ class ViewerOverlay(QWidget):
         self._status_ready.connect(self._on_status)
         self._broker_ready.connect(self._on_broker_status)
         self.old_pos = None
+        self._received_any = False
         self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
 
-        threading.Thread(target=self._mqtt_thread, daemon=True).start()
-
-        # After 20 s with no data, tell the friend something is wrong
+        # Create timer before connecting the stop signal so the target exists
         self._timeout_timer = QTimer(self)
         self._timeout_timer.setSingleShot(True)
         self._timeout_timer.timeout.connect(self._on_connect_timeout)
         self._timeout_timer.start(20_000)
+
+        # _stop_timer is emitted from the paho network thread — Qt routes it
+        # safely to the main thread so we never touch QTimer across threads
+        self._stop_timer.connect(self._timeout_timer.stop)
+
+        threading.Thread(target=self._mqtt_thread, daemon=True).start()
 
     def _mqtt_thread(self):
         import json as _json, uuid as _uuid
@@ -490,7 +495,7 @@ class ViewerOverlay(QWidget):
 
         def on_connect(c, userdata, flags, rc):
             if rc == 0:
-                c.subscribe(topic, qos=1)   # qos=1 ensures delivery acknowledgement
+                c.subscribe(topic, qos=0)
                 self._broker_ready.emit(
                     "● broker connected",
                     "color: #4488cc; background: transparent;")
@@ -507,7 +512,7 @@ class ViewerOverlay(QWidget):
                 data = _json.loads(msg.payload.decode())
                 bpm  = int(data.get("bpm", 0))
                 self._received_any = True
-                self._timeout_timer.stop()
+                self._stop_timer.emit()   # safe cross-thread signal → stops QTimer on main thread
                 if bpm > 0:
                     self._status_ready.emit(
                         "● receiving data",
