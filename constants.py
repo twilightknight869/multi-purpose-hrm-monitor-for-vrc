@@ -4,7 +4,7 @@
 import base64 as _b64
 
 # App version & update-check endpoint
-VERSION      = "1.1.4"
+VERSION      = "1.2.1"
 GITHUB_OWNER = "twilightknight869"                  # your GitHub username
 GITHUB_REPO  = "Multi-Purpose-HRM-Monitor-For-VRC" # your repository name
 

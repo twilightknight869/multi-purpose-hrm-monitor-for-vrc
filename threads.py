@@ -304,9 +304,12 @@ def osc_thread(cfg: dict):
 # ===========================================================
 def _steamvr_running() -> bool:
     try:
+        # CREATE_NO_WINDOW prevents the cmd flash every poll cycle on Windows
+        flags = subprocess.CREATE_NO_WINDOW if sys.platform == "win32" else 0
         out = subprocess.check_output(
             ["tasklist", "/FI", "IMAGENAME eq vrserver.exe", "/NH"],
             stderr=subprocess.DEVNULL,
+            creationflags=flags,
         ).decode()
         return "vrserver.exe" in out
     except Exception:

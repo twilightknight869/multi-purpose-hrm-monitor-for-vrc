@@ -419,8 +419,15 @@ class ViewerOverlay(QWidget):
         self._bpm_ready.connect(self._on_bpm)
         self._status_ready.connect(self._on_status)
         self.old_pos = None
+        self._received_any = False   # flipped True on first message
         self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)  # needed so keyPressEvent fires
         threading.Thread(target=self._mqtt_thread, daemon=True).start()
+
+        # If no data arrives within 20 s, nudge the user to check their room code
+        self._timeout_timer = QTimer(self)
+        self._timeout_timer.setSingleShot(True)
+        self._timeout_timer.timeout.connect(self._on_connect_timeout)
+        self._timeout_timer.start(20_000)
 
     def _mqtt_thread(self):
         import json as _json, uuid as _uuid
@@ -449,6 +456,9 @@ class ViewerOverlay(QWidget):
             try:
                 data = _json.loads(msg.payload.decode())
                 bpm  = int(data.get("bpm", 0))
+                self._received_any = True
+                if hasattr(self, '_timeout_timer'):
+                    self._timeout_timer.stop()
                 if bpm > 0:
                     self._status_ready.emit(
                         "● connected",
@@ -459,8 +469,10 @@ class ViewerOverlay(QWidget):
                     self._status_ready.emit(
                         "● host connected — waiting for sensor…",
                         "color: #888800; background: transparent;")
-            except Exception:
-                pass
+            except Exception as _e:
+                self._status_ready.emit(
+                    f"● data error: {_e}",
+                    "color: #cc4400; background: transparent;")
 
         def on_disconnect(c, userdata, rc):
             self._status_ready.emit(
@@ -497,6 +509,14 @@ class ViewerOverlay(QWidget):
                 f"● error: {e}",
                 "color: #cc4400; background: transparent;")
 
+    def _on_connect_timeout(self):
+        """Fires 20 s after launch if no MQTT message was ever received."""
+        if not self._received_any:
+            self._on_status(
+                "● no data — check room code",
+                "color: #cc4400; background: transparent;",
+            )
+
     def _on_bpm(self, bpm: int):
         color = "#ff2222" if bpm >= BPM_HIGH else "#ffaa00" if bpm >= BPM_MED else "#00ff99"
         self.bpm_lbl.setText(f"{bpm} BPM")
@@ -514,6 +534,7 @@ class ViewerOverlay(QWidget):
             super().keyPressEvent(event)
 
     def closeEvent(self, event):
+        self._timeout_timer.stop()
         if self._mqtt_client:
             try:
                 self._mqtt_client.disconnect()
