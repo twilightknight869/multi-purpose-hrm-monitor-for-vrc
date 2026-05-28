@@ -1,7 +1,6 @@
 # ===========================================================
 #  HRM Monitor — Floating Overlay Windows
 # ===========================================================
-import socket
 import threading
 import time
 
@@ -15,7 +14,7 @@ from constants import (
     SHAKE_HIGH_BPM, SHAKE_HIGH_INT,
     SHAKE_MED_BPM,  SHAKE_MED_INT,
     SHAKE_LOW_BPM,  SHAKE_LOW_INT,
-    SHARE_PORT,
+    MQTT_BROKER, MQTT_PORT, MQTT_TOPIC_PREFIX,
     OVERLAY_TRACK_MAX_LEN, OVERLAY_ARTIST_MAX_LEN,
 )
 from widgets import HeartWidget, BPMGraph
@@ -362,16 +361,13 @@ class Overlay(QWidget):
 #  Viewer Overlay  (friend's minimal readout)
 # ===========================================================
 class ViewerOverlay(QWidget):
-    _bpm_ready = pyqtSignal(int)
+    _bpm_ready   = pyqtSignal(int)
+    _status_ready = pyqtSignal(str, str)   # (text, css-color)
 
-    def __init__(self, host: str, port: int = SHARE_PORT):
+    def __init__(self, room_code: str):
         super().__init__()
-        self.host = host
-        self.port = port
-        self._sock = None
-        self._reconnect_timer = QTimer()
-        self._reconnect_timer.setSingleShot(True)
-        self._reconnect_timer.timeout.connect(self._connect)
+        self.room_code  = room_code.strip().upper()
+        self._mqtt_client = None
 
         self.setWindowFlags(
             Qt.WindowType.FramelessWindowHint |
@@ -379,7 +375,7 @@ class ViewerOverlay(QWidget):
             Qt.WindowType.Tool
         )
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
-        self.resize(260, 130)
+        self.resize(270, 140)
 
         root = QVBoxLayout(self)
         root.setContentsMargins(12, 10, 12, 10)
@@ -399,7 +395,7 @@ class ViewerOverlay(QWidget):
         self.bpm_lbl.setStyleSheet("color: #00ff99; background: transparent;")
         info.addWidget(self.bpm_lbl)
 
-        self.name_lbl = QLabel(f"watching: {host}")
+        self.name_lbl = QLabel(f"room: {self.room_code}")
         self.name_lbl.setFont(QFont("Consolas", 9))
         self.name_lbl.setStyleSheet("color: #555566; background: transparent;")
         info.addWidget(self.name_lbl)
@@ -421,62 +417,85 @@ class ViewerOverlay(QWidget):
         root.addWidget(credit)
 
         self._bpm_ready.connect(self._on_bpm)
+        self._status_ready.connect(self._on_status)
         self.old_pos = None
-        self._connect()
+        self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)  # needed so keyPressEvent fires
+        threading.Thread(target=self._mqtt_thread, daemon=True).start()
 
-    def _connect(self):
-        threading.Thread(target=self._socket_thread, daemon=True).start()
-
-    def _socket_thread(self):
-        import json, errno as _errno
-        error_msg = "disconnected"
+    def _mqtt_thread(self):
+        import json as _json, uuid as _uuid
         try:
-            s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            s.settimeout(10)
-            s.connect((self.host, self.port))
-            s.settimeout(None)
-            self._sock = s
-            self.conn_lbl.setText("● connected")
-            self.conn_lbl.setStyleSheet("color: #00cc44; background: transparent;")
-            buf = ""
-            while True:
-                chunk = s.recv(256).decode(errors="ignore")
-                if not chunk:
-                    error_msg = "host closed the connection"
-                    break
-                buf += chunk
-                while "\n" in buf:
-                    line, buf = buf.split("\n", 1)
-                    try:
-                        data = json.loads(line)
-                        self._bpm_ready.emit(int(data["bpm"]))
-                    except Exception:
-                        pass
-        except ConnectionRefusedError:
-            error_msg = "refused — is HR Sharing enabled on the host?"
-        except TimeoutError:
-            error_msg = "timed out — wrong IP or host is offline"
-        except OSError as e:
-            ec = getattr(e, "errno", None)
-            if ec in (_errno.ENETUNREACH, _errno.EHOSTUNREACH):
-                error_msg = "host unreachable — check you're on the same network"
-            elif ec == _errno.ECONNRESET:
-                error_msg = "connection reset by host"
+            import paho.mqtt.client as mqtt
+        except ImportError:
+            self._status_ready.emit(
+                "● install paho-mqtt first",
+                "color: #cc4400; background: transparent;")
+            return
+
+        topic = f"{MQTT_TOPIC_PREFIX}/{self.room_code}/bpm"
+
+        def on_connect(c, userdata, flags, rc):
+            if rc == 0:
+                c.subscribe(topic, qos=0)
+                self._status_ready.emit(
+                    "● connected",
+                    "color: #00cc44; background: transparent;")
             else:
-                error_msg = f"network error (code {ec})"
+                self._status_ready.emit(
+                    f"● broker refused (rc={rc})",
+                    "color: #cc4400; background: transparent;")
+
+        def on_message(c, userdata, msg):
+            try:
+                data = _json.loads(msg.payload.decode())
+                self._bpm_ready.emit(int(data["bpm"]))
+            except Exception:
+                pass
+
+        def on_disconnect(c, userdata, rc):
+            self._status_ready.emit(
+                "● disconnected — reconnecting…",
+                "color: #cc4400; background: transparent;")
+
+        client_id = f"hrm-viewer-{_uuid.uuid4().hex[:8]}"
+        self._mqtt_client = mqtt.Client(client_id=client_id)
+        self._mqtt_client.on_connect    = on_connect
+        self._mqtt_client.on_message    = on_message
+        self._mqtt_client.on_disconnect = on_disconnect
+        self._mqtt_client.reconnect_delay_set(min_delay=2, max_delay=30)
+
+        try:
+            self._mqtt_client.connect(MQTT_BROKER, MQTT_PORT, keepalive=60)
+            self._mqtt_client.loop_forever()   # blocks; auto-reconnects on drop
         except Exception as e:
-            error_msg = f"error: {type(e).__name__}"
-            print(f"Viewer error: {e}")
-        finally:
-            self.conn_lbl.setText(f"● {error_msg} — retrying…")
-            self.conn_lbl.setStyleSheet("color: #cc4400; background: transparent;")
-            self._reconnect_timer.start(5000)
+            self._status_ready.emit(
+                f"● error: {e}",
+                "color: #cc4400; background: transparent;")
 
     def _on_bpm(self, bpm: int):
         color = "#ff2222" if bpm >= BPM_HIGH else "#ffaa00" if bpm >= BPM_MED else "#00ff99"
         self.bpm_lbl.setText(f"{bpm} BPM")
         self.bpm_lbl.setStyleSheet(f"color: {color}; background: transparent;")
         self.heart_widget.set_bpm(bpm)
+
+    def _on_status(self, text: str, style: str):
+        self.conn_lbl.setText(text)
+        self.conn_lbl.setStyleSheet(style)
+
+    def keyPressEvent(self, event):
+        if event.key() == Qt.Key.Key_Escape:
+            self.close()
+        else:
+            super().keyPressEvent(event)
+
+    def closeEvent(self, event):
+        if self._mqtt_client:
+            try:
+                self._mqtt_client.disconnect()
+                self._mqtt_client.loop_stop()
+            except Exception:
+                pass
+        super().closeEvent(event)
 
     def paintEvent(self, event):
         p = QPainter(self)

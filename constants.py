@@ -35,9 +35,13 @@ VR_OVERLAY_WIDTH = 0.12            # metres
 VR_TEXTURE_SIZE  = 256             # px square
 STEAMVR_POLL_SEC = 5
 
-# Friend viewer sharing
-SHARE_PORT = 5050
-SHARE_HOST = "0.0.0.0"
+# Friend HR sharing — MQTT relay (no port forwarding needed)
+# Both host and viewer connect to a free public MQTT broker.
+# The host generates a 6-char room code; the friend enters it.
+MQTT_BROKER       = "broker.hivemq.com"
+MQTT_PORT         = 1883
+MQTT_TOPIC_PREFIX = "hrm-monitor-v1"
+ROOM_CODE_LEN     = 6
 
 # Spotify polling (seconds)
 SPOTIFY_POLL_SEC = 3

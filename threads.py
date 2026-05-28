@@ -5,7 +5,6 @@ import json
 import math
 import pathlib
 import random
-import socket
 import subprocess
 import threading
 import time
@@ -40,7 +39,7 @@ from constants import (
     VRC_CHATBOX_INPUT, CHATBOX_INTERVAL_SEC,
     VR_OVERLAY_KEY, VR_OVERLAY_NAME, VR_OVERLAY_WIDTH,
     VR_TEXTURE_SIZE, STEAMVR_POLL_SEC,
-    SHARE_PORT, SHARE_HOST,
+    MQTT_BROKER, MQTT_PORT, MQTT_TOPIC_PREFIX,
     SPOTIFY_POLL_SEC, STATUS_ROTATE_SEC,
     BPM_HIGH, BPM_MED,
     VRC_CHATBOX_MAX_LENGTH, VRC_STATUS_MAX_LENGTH, VRC_HLINE_MAX_LENGTH,
@@ -123,14 +122,48 @@ def _build_chatbox_line(bpm: int, template: str, spotify: dict) -> str:
     track  = _truncate_text(raw_track,  CHATBOX_TRACK_MAX_LEN)  if raw_track  else ""
     artist = _truncate_text(raw_artist, CHATBOX_ARTIST_MAX_LEN) if raw_artist else ""
 
-    rendered = template.format(
-        bpm    = bpm,
-        bar    = bar,
-        tier   = tier,
-        icon   = icon,
-        track  = track,
-        artist = artist,
-    )
+    # Sanitise the template so unknown/malformed braces don't crash str.format().
+    # Strategy: walk through the string char-by-char, escape any { } that
+    # don't belong to one of our known placeholders.
+    known = {'bpm', 'bar', 'tier', 'icon', 'track', 'artist'}
+    safe: list[str] = []
+    i, n = 0, len(template)
+    while i < n:
+        ch = template[i]
+        if ch == '{':
+            # Find matching closing brace
+            j = template.find('}', i + 1)
+            if j == -1:
+                # Unclosed brace — escape it
+                safe.append('{{')
+                i += 1
+            else:
+                inner = template[i + 1:j]
+                if inner in known:
+                    safe.append('{' + inner + '}')
+                else:
+                    safe.append('{{' + inner + '}}')
+                i = j + 1
+        elif ch == '}':
+            # Lone closing brace — escape it
+            safe.append('}}')
+            i += 1
+        else:
+            safe.append(ch)
+            i += 1
+    safe_template = ''.join(safe)
+
+    try:
+        rendered = safe_template.format(
+            bpm    = bpm,
+            bar    = bar,
+            tier   = tier,
+            icon   = icon,
+            track  = track,
+            artist = artist,
+        )
+    except (KeyError, ValueError):
+        rendered = f"{icon} {bpm} BPM [{bar}]"
     return _truncate_text(rendered, VRC_HLINE_MAX_LENGTH)
 
 
@@ -170,7 +203,7 @@ def osc_thread(cfg: dict):
     # so there is only ONE writer to /chatbox/input at all times.
     statuses          = cfg.get("statuses", [])
     rotate_enabled    = cfg.get("rotate_enabled", False) and bool(statuses)
-    rotate_sec        = max(cfg.get("rotate_sec", STATUS_ROTATE_SEC), CHATBOX_INTERVAL_SEC + 0.1)
+    rotate_sec        = max(int(cfg.get("rotate_sec", STATUS_ROTATE_SEC)), int(CHATBOX_INTERVAL_SEC) + 1)
     status_idx        = 0
     last_status_swap  = time.time()   # when we last changed the active status
 
@@ -211,18 +244,31 @@ def osc_thread(cfg: dict):
                         else:
                             active_status = ""
 
-                        sp_data = spotify if spotify_in_box else {}
-                        hr_line = _build_chatbox_line(bpm, template, sp_data)
+                        # ── Build each section independently then join ────
+                        # Line 1: HR line from template (track/artist NOT
+                        #         embedded here — they get their own line below
+                        #         so they never collide with the bar or status).
+                        hr_line = _build_chatbox_line(bpm, template, {})
+                        parts = [hr_line]
 
-                        # Combine HR line + status on one line so VRChat
-                        # receives a single chatbox message per interval.
+                        # Line 2 (optional): Spotify now-playing
+                        if spotify_in_box and spotify.get("track"):
+                            _st = _truncate_text(spotify["track"],
+                                                 CHATBOX_TRACK_MAX_LEN)
+                            _sa = spotify.get("artist", "")
+                            _sa = _truncate_text(_sa, CHATBOX_ARTIST_MAX_LEN) if _sa else ""
+                            spotify_line = f"\U0001f3b5 {_st}"
+                            if _sa:
+                                spotify_line += f" — {_sa}"
+                            parts.append(spotify_line)
+
+                        # Line 3 (optional): rotating status
                         if active_status:
+                            _st = spotify.get("track",  "")
+                            _sa = spotify.get("artist", "")
                             try:
-                                _st = spotify.get("track",  "")
-                                _sa = spotify.get("artist", "")
                                 rendered_status = active_status.format(
                                     bpm    = bpm,
-                                    bar    = hr_line,   # fallback — unlikely used
                                     tier   = ("HIGH" if bpm >= BPM_HIGH
                                               else "MED" if bpm >= BPM_MED else "LOW"),
                                     icon   = ("❤️" if bpm >= BPM_HIGH
@@ -230,15 +276,11 @@ def osc_thread(cfg: dict):
                                     track  = _truncate_text(_st, CHATBOX_TRACK_MAX_LEN)  if _st else "",
                                     artist = _truncate_text(_sa, CHATBOX_ARTIST_MAX_LEN) if _sa else "",
                                 )
-                                rendered_status = _truncate_text(rendered_status, VRC_STATUS_MAX_LENGTH)
                             except (KeyError, ValueError):
-                                rendered_status = _truncate_text(active_status, VRC_STATUS_MAX_LENGTH)
-                            
-                            # Status on its own line so it never runs into the HR bar
-                            combined = f"{hr_line}\n{rendered_status}"
-                            line = _truncate_text(combined, VRC_CHATBOX_MAX_LENGTH)
-                        else:
-                            line = hr_line
+                                rendered_status = active_status
+                            parts.append(_truncate_text(rendered_status, VRC_STATUS_MAX_LENGTH))
+
+                        line = _truncate_text("\n".join(parts), VRC_CHATBOX_MAX_LENGTH)
 
                         client.send_message(VRC_CHATBOX_INPUT, [line, True, False])
                         sig.bus.chatbox_signal.emit(line)
@@ -477,56 +519,56 @@ def status_rotator_thread(cfg: dict):
 
 
 # ===========================================================
-#  Friend HR Share Server
+#  Friend HR Sharing — MQTT relay  (no port forwarding needed)
 # ===========================================================
-_share_clients: list[socket.socket] = []
-_share_lock = threading.Lock()
+def mqtt_share_thread(room_code: str):
+    """
+    Publishes live BPM to a public MQTT broker so friends can connect
+    from anywhere without port forwarding. Both sides just need the
+    6-character room code.
 
-
-def share_server_thread():
-    srv = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    srv.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    Requires: pip install paho-mqtt
+    Broker:   broker.hivemq.com  (free, no account needed)
+    Topic:    hrm-monitor-v1/{room_code}/bpm
+    """
     try:
-        srv.bind((SHARE_HOST, SHARE_PORT))
-        srv.listen(16)
-        print(f"Share server on port {SHARE_PORT}")
+        import paho.mqtt.client as mqtt
+    except ImportError:
+        print("paho-mqtt not installed — run: pip install paho-mqtt")
+        sig.bus.friend_signal.emit({"type": "error",
+                                    "ip": "paho-mqtt not installed — run: pip install paho-mqtt"})
+        return
+
+    topic      = f"{MQTT_TOPIC_PREFIX}/{room_code}/bpm"
+    _connected = threading.Event()
+
+    def on_connect(c, userdata, flags, rc):
+        if rc == 0:
+            print(f"[Share] MQTT connected — room code: {room_code}")
+            _connected.set()
+        else:
+            print(f"[Share] MQTT connect failed rc={rc}")
+
+    def on_disconnect(c, userdata, rc):
+        _connected.clear()
+        print("[Share] MQTT disconnected — auto-reconnecting…")
+
+    client = mqtt.Client(client_id=f"hrm-host-{room_code}")
+    client.on_connect    = on_connect
+    client.on_disconnect = on_disconnect
+
+    try:
+        client.connect_async(MQTT_BROKER, MQTT_PORT, keepalive=60)
     except Exception as e:
-        print(f"Share server failed: {e}"); return
+        print(f"[Share] MQTT initial connect error: {e}"); return
 
-    def _accept():
-        while True:
+    client.loop_start()
+
+    while True:
+        bpm = sig.get_bpm()
+        if bpm > 0 and _connected.is_set():
             try:
-                conn, addr = srv.accept()
-                ip = addr[0]
-                print(f"Friend connected: {addr}")
-                with _share_lock:
-                    _share_clients.append(conn)
-                sig.bus.friend_signal.emit({"type": "connected", "ip": ip})
-                # Watch for disconnect in its own thread
-                def _watch(c, _ip):
-                    try:
-                        while c.recv(1):
-                            pass
-                    except Exception:
-                        pass
-                    with _share_lock:
-                        if c in _share_clients:
-                            _share_clients.remove(c)
-                    sig.bus.friend_signal.emit({"type": "disconnected", "ip": _ip})
-                threading.Thread(target=_watch, args=(conn, ip), daemon=True).start()
-            except Exception:
-                break
-
-    threading.Thread(target=_accept, daemon=True).start()
-
-    def _broadcast(bpm: int):
-        msg = (json.dumps({"bpm": bpm}) + "\n").encode()
-        dead = []
-        with _share_lock:
-            for c in _share_clients:
-                try:  c.sendall(msg)
-                except Exception: dead.append(c)
-            for c in dead:
-                _share_clients.remove(c)
-
-    sig.bus.bpm_signal.connect(_broadcast)
+                client.publish(topic, json.dumps({"bpm": bpm}), qos=0, retain=False)
+            except Exception as e:
+                print(f"[Share] publish error: {e}")
+        time.sleep(1)

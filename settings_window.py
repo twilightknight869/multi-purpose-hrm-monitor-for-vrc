@@ -1,7 +1,6 @@
 # ===========================================================
 #  HRM Monitor — Settings Window
 # ===========================================================
-import socket
 import threading
 
 from PyQt6.QtWidgets import (
@@ -17,7 +16,7 @@ import threads
 from constants import (
     TOKEN, VRC_OSC_IP, VRC_OSC_PORT,
     VRC_OSC_HR_PARAM, VRC_OSC_PCT_PARAM,
-    SHARE_PORT,
+    ROOM_CODE_LEN,
     DEFAULT_CHATBOX_TEMPLATE, DEFAULT_STATUS_ENTRIES,
     STATUS_ROTATE_SEC, DARK_STYLE,
 )
@@ -52,6 +51,15 @@ class SettingsWindow(QWidget):
         self.setStyleSheet(DARK_STYLE)
 
         self.settings = QSettings("HRMMonitor", "Settings")
+
+        # Room code for friend HR sharing (generated once, persisted)
+        import random, string as _string
+        saved_code = self.settings.value("room_code", "")
+        if not saved_code or len(saved_code) != ROOM_CODE_LEN:
+            saved_code = ''.join(
+                random.choices(_string.ascii_uppercase + _string.digits, k=ROOM_CODE_LEN))
+            self.settings.setValue("room_code", saved_code)
+        self.room_code = saved_code
 
         # Store refs for cross-tab access
         self.rotate_checkbox = None
@@ -190,12 +198,49 @@ class SettingsWindow(QWidget):
         self.shake_checkbox = QCheckBox("Screen shake")
         self.shake_checkbox.setChecked(self._bool_setting("shake", True))
         og.addWidget(self.shake_checkbox)
-        self.share_checkbox = QCheckBox("Broadcast HR\n(port 5050)")
-        self.share_checkbox.setChecked(self._bool_setting("share_enabled", False))
-        og.addWidget(self.share_checkbox)
         og.addStretch()
         mid_row.addWidget(opt_group, stretch=1)
         layout.addLayout(mid_row)
+
+        # ── Friend HR Sharing (MQTT — no port forwarding) ─────────
+        share_group = QGroupBox("Friend HR Sharing")
+        sg = QVBoxLayout(share_group)
+        sg.setContentsMargins(10, 6, 10, 10)
+        sg.setSpacing(6)
+
+        self.share_checkbox = QCheckBox("Enable sharing  (works over the internet — no port forwarding)")
+        self.share_checkbox.setChecked(self._bool_setting("share_enabled", False))
+        sg.addWidget(self.share_checkbox)
+
+        code_row = QHBoxLayout()
+        code_row.setSpacing(8)
+        code_lbl = QLabel("Room Code:")
+        code_lbl.setStyleSheet("color: #888888; font-size: 12px;")
+        code_row.addWidget(code_lbl)
+
+        self.room_code_lbl = QLabel(self.room_code)
+        self.room_code_lbl.setFont(QFont("Consolas", 18, QFont.Weight.Bold))
+        self.room_code_lbl.setStyleSheet("color: #ff4444; letter-spacing: 4px;")
+        self.room_code_lbl.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
+        code_row.addWidget(self.room_code_lbl)
+        code_row.addStretch()
+
+        copy_btn = QPushButton("📋 Copy")
+        copy_btn.setFixedWidth(80)
+        copy_btn.clicked.connect(self._copy_room_code)
+        code_row.addWidget(copy_btn)
+
+        new_code_btn = QPushButton("🔄 New Code")
+        new_code_btn.setFixedWidth(100)
+        new_code_btn.clicked.connect(self._regen_room_code)
+        code_row.addWidget(new_code_btn)
+        sg.addLayout(code_row)
+
+        hint = QLabel("Share this code with your friend — they enter it in the Viewer tab.")
+        hint.setStyleSheet("color: #555555; font-size: 11px;")
+        hint.setWordWrap(True)
+        sg.addWidget(hint)
+        layout.addWidget(share_group)
 
         # VR
         vr_group = QGroupBox("SteamVR Wrist Overlay")
@@ -548,7 +593,7 @@ class SettingsWindow(QWidget):
         page = QWidget()
         layout = QVBoxLayout(page)
         layout.setSpacing(10)
-        layout.setContentsMargins(24, 20, 24, 20)
+        layout.setContentsMargins(24, 24, 24, 24)
         layout.addStretch()
 
         lbl = QLabel("Watch a friend's heart rate")
@@ -557,35 +602,41 @@ class SettingsWindow(QWidget):
         lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
         layout.addWidget(lbl)
 
-        sub = QLabel("Ask them to enable \"Broadcast HR\" and share their IP.")
+        sub = QLabel("Ask them to enable sharing and send you their Room Code.\nNo IP address or port forwarding needed.")
         sub.setStyleSheet("color: #666666; font-size: 12px;")
         sub.setAlignment(Qt.AlignmentFlag.AlignCenter)
         sub.setWordWrap(True)
         layout.addWidget(sub)
 
-        layout.addSpacing(8)
+        layout.addSpacing(12)
 
-        ip_group = QGroupBox("Host IP Address")
-        ip_layout = QVBoxLayout(ip_group)
-        ip_layout.setContentsMargins(10, 6, 10, 10)
-        ip_layout.setSpacing(6)
+        code_group = QGroupBox("Room Code")
+        cg = QVBoxLayout(code_group)
+        cg.setContentsMargins(12, 8, 12, 12)
+        cg.setSpacing(8)
 
-        self.viewer_ip_input = QLineEdit()
-        self.viewer_ip_input.setPlaceholderText("e.g. 192.168.1.42  or  73.12.34.56")
-        self.viewer_ip_input.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.viewer_ip_input.setFont(QFont("Consolas", 12))
-        self.viewer_ip_input.setText(self.settings.value("viewer_ip", ""))
-        ip_layout.addWidget(self.viewer_ip_input)
+        self.viewer_code_input = QLineEdit()
+        self.viewer_code_input.setPlaceholderText("e.g.  A3X7K2")
+        self.viewer_code_input.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.viewer_code_input.setFont(QFont("Consolas", 22, QFont.Weight.Bold))
+        self.viewer_code_input.setFixedHeight(54)
+        self.viewer_code_input.setStyleSheet(
+            "QLineEdit { color: #ff4444; letter-spacing: 6px;"
+            " border: 1px solid #880000; border-radius: 8px; background: #080000; }"
+            "QLineEdit:focus { border-color: #cc0000; }"
+        )
+        self.viewer_code_input.setMaxLength(ROOM_CODE_LEN)
+        saved_code = self.settings.value("viewer_code", "")
+        self.viewer_code_input.setText(saved_code)
+        self.viewer_code_input.textChanged.connect(
+            lambda t: self.viewer_code_input.setText(t.upper().replace(" ", "")))
+        cg.addWidget(self.viewer_code_input)
 
-        port_row = QHBoxLayout()
-        port_row.addWidget(QLabel("Port:"))
-        self.viewer_port_input = QLineEdit(
-            str(self.settings.value("viewer_port", str(SHARE_PORT))))
-        self.viewer_port_input.setFixedWidth(60)
-        port_row.addWidget(self.viewer_port_input)
-        port_row.addStretch()
-        ip_layout.addLayout(port_row)
-        layout.addWidget(ip_group)
+        hint = QLabel("6 characters — uppercase letters and numbers")
+        hint.setStyleSheet("color: #444444; font-size: 11px;")
+        hint.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        cg.addWidget(hint)
+        layout.addWidget(code_group)
 
         watch_btn = QPushButton("👁   CONNECT & WATCH")
         watch_btn.setFont(QFont("Segoe UI", 13, QFont.Weight.Bold))
@@ -600,19 +651,6 @@ class SettingsWindow(QWidget):
         )
         watch_btn.clicked.connect(self._launch_viewer)
         layout.addWidget(watch_btn)
-
-        layout.addSpacing(12)
-
-        hint_group = QGroupBox("Your IP  (share this if you're the host)")
-        hint_layout = QHBoxLayout(hint_group)
-        hint_layout.setContentsMargins(10, 4, 10, 6)
-        self.local_ip_lbl = QLabel(self._get_local_ip())
-        self.local_ip_lbl.setFont(QFont("Consolas", 12, QFont.Weight.Bold))
-        self.local_ip_lbl.setStyleSheet("color: #cc0000;")
-        self.local_ip_lbl.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
-        self.local_ip_lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        hint_layout.addWidget(self.local_ip_lbl)
-        layout.addWidget(hint_group)
 
         layout.addStretch()
         return page
@@ -656,15 +694,6 @@ class SettingsWindow(QWidget):
             self.dev_status.setStyleSheet("color: #ff6666; font-size: 12px;")
             self.dev_key_input.clear()
 
-    @staticmethod
-    def _get_local_ip() -> str:
-        try:
-            s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-            s.connect(("8.8.8.8", 80))
-            ip = s.getsockname()[0]; s.close(); return ip
-        except Exception:
-            return "unavailable"
-
     def _reset_osc_params(self):
         self.hr_param_input.setText(VRC_OSC_HR_PARAM)
         self.pct_param_input.setText(VRC_OSC_PCT_PARAM)
@@ -677,33 +706,35 @@ class SettingsWindow(QWidget):
         spotify  = {"track": "Redbone", "artist": "Childish Gambino"} \
                    if self.spotify_in_chatbox_checkbox.isChecked() else {}
         try:
-            hr_line = _build_chatbox_line(90, template, spotify)
-            
-            # Show HR line + example status if applicable
+            # Line 1: HR line (no spotify in template — it gets its own line)
+            hr_line = _build_chatbox_line(90, template, {})
+            parts = [hr_line]
+
+            # Line 2: Spotify (if enabled)
+            spotify_in_box = self.spotify_in_chatbox_checkbox.isChecked()
+            if spotify_in_box:
+                parts.append("🎵 Redbone — Childish Gambino")
+
+            # Line 3: first status entry (if rotation enabled)
             status_list = []
             if self.status_list is not None:
-                status_list = [self.status_list.item(i).text() for i in range(self.status_list.count())]
-            
+                status_list = [self.status_list.item(i).text()
+                               for i in range(self.status_list.count())]
             if status_list and self.rotate_checkbox and self.rotate_checkbox.isChecked():
                 status = status_list[0]
                 try:
                     status = status.format(
-                        bpm=90, bar="█████░░░░░", tier="MED", icon="🧡",
+                        bpm=90, tier="MED", icon="🧡",
                         track="Redbone", artist="Childish Gambino")
                 except (KeyError, ValueError):
                     pass
-                status = _truncate_text(status, VRC_STATUS_MAX_LENGTH)
-                combined = f"{hr_line}  •  {status}"
-                final = _truncate_text(combined, VRC_CHATBOX_MAX_LENGTH)
-                char_color = "#88ff88" if len(final) <= 144 else "#ffaa44"
-                self.vrc_preview.setText(f"📤  {final}")
-                self.vrc_char_count.setText(str(len(final)))
-                self.vrc_char_count.setStyleSheet(f"color: {char_color};")
-            else:
-                char_color = "#88ff88" if len(hr_line) <= 144 else "#ffaa44"
-                self.vrc_preview.setText(f"📤  {hr_line}")
-                self.vrc_char_count.setText(str(len(hr_line)))
-                self.vrc_char_count.setStyleSheet(f"color: {char_color};")
+                parts.append(_truncate_text(status, VRC_STATUS_MAX_LENGTH))
+
+            final = _truncate_text("\n".join(parts), VRC_CHATBOX_MAX_LENGTH)
+            char_color = "#88ff88" if len(final) <= 144 else "#ffaa44"
+            self.vrc_preview.setText(f"📤  {final}")
+            self.vrc_char_count.setText(str(len(final)))
+            self.vrc_char_count.setStyleSheet(f"color: {char_color};")
         except KeyError as e:
             self.vrc_preview.setText(f"⚠  Unknown placeholder {e}")
             self.vrc_char_count.setText("—")
@@ -744,16 +775,23 @@ class SettingsWindow(QWidget):
             self.status_list.insertItem(row + 1, item)
             self.status_list.setCurrentRow(row + 1)
 
+    def _copy_room_code(self):
+        QApplication.clipboard().setText(self.room_code)
+
+    def _regen_room_code(self):
+        import random, string as _string
+        self.room_code = ''.join(
+            random.choices(_string.ascii_uppercase + _string.digits, k=ROOM_CODE_LEN))
+        self.settings.setValue("room_code", self.room_code)
+        self.room_code_lbl.setText(self.room_code)
+
     def _launch_viewer(self):
-        host = self.viewer_ip_input.text().strip()
-        if not host: return
-        try:
-            port = int(self.viewer_port_input.text().strip() or SHARE_PORT)
-        except ValueError:
-            port = SHARE_PORT
-        self.settings.setValue("viewer_ip",   host)
-        self.settings.setValue("viewer_port", port)
-        viewer = ViewerOverlay(host, port)
+        code = self.viewer_code_input.text().strip().upper()
+        if len(code) != ROOM_CODE_LEN:
+            self.viewer_code_input.setPlaceholderText(f"need {ROOM_CODE_LEN} characters!")
+            return
+        self.settings.setValue("viewer_code", code)
+        viewer = ViewerOverlay(code)
         QApplication.instance()._viewer = viewer
         viewer.show()
         self.hide()
@@ -780,6 +818,7 @@ class SettingsWindow(QWidget):
             "vr_enabled":    self.vr_checkbox.isChecked() and OPENVR_OK,
             # Share
             "share_enabled": self.share_checkbox.isChecked(),
+            "room_code":     self.room_code,
             # OSC
             "osc_enabled":   self.osc_checkbox.isChecked() and OSC_OK,
             "osc_ip":        self.osc_ip.text().strip() or VRC_OSC_IP,
@@ -846,7 +885,8 @@ class SettingsWindow(QWidget):
             _t.Thread(target=threads.steamvr_watcher_thread, args=(cfg,), daemon=True).start()
 
         if cfg["share_enabled"]:
-            _t.Thread(target=threads.share_server_thread, daemon=True).start()
+            _t.Thread(target=threads.mqtt_share_thread,
+                      args=(cfg["room_code"],), daemon=True).start()
 
         if cfg["spotify_enabled"] and cfg["spotify_client_id"] and cfg["spotify_client_secret"]:
             _t.Thread(

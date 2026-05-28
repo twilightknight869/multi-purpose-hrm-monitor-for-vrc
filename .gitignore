@@ -2,3 +2,4 @@ __pycache__/
 *.pyc
 .spotify_cache
 upload_to_github.ps1
+push_update.ps1
