@@ -6,6 +6,48 @@ import sys
 import pathlib
 import traceback
 
+
+# ===========================================================
+#  Pre-boot: ensure core packages are installed
+#  Runs BEFORE any PyQt6 import so it works even when
+#  PyQt6 itself is missing.
+# ===========================================================
+def _ensure_core_deps() -> None:
+    """
+    Install PyQt6 and websocket-client if they're absent.
+    Shows a console message then restarts via os.execv so
+    the fresh imports pick up the newly installed packages.
+    """
+    import subprocess
+    import os
+
+    CORE = [
+        ("PyQt6",     "PyQt6>=6.6.0"),
+        ("websocket", "websocket-client>=1.7.0"),
+    ]
+
+    missing = [pkg for name, pkg in CORE
+               if not __import__("importlib").util.find_spec(name)]
+
+    if not missing:
+        return
+
+    flags = subprocess.CREATE_NO_WINDOW if sys.platform == "win32" else 0
+    print("[HRM Monitor] Installing missing core packages:", ", ".join(missing))
+    result = subprocess.run(
+        [sys.executable, "-m", "pip", "install"] + missing,
+        creationflags=flags,
+    )
+    if result.returncode == 0:
+        print("[HRM Monitor] Done — restarting…")
+        os.execv(sys.executable, [sys.executable] + sys.argv)
+    else:
+        print("[HRM Monitor] pip install failed — please run install_deps.bat")
+        sys.exit(1)
+
+
+_ensure_core_deps()
+
 from PyQt6.QtWidgets import QApplication, QMessageBox
 
 

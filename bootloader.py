@@ -92,17 +92,6 @@ def _check_pkg(import_name: str, display: str) -> tuple[str, str]:
         return "warn", f"{display} — not installed (optional)"
 
 
-def _check_paho() -> tuple[str, str]:
-    """paho-mqtt lives at paho.mqtt.client — needs special handling."""
-    try:
-        import paho.mqtt.client as _mc          # noqa: F401
-        import paho as _p
-        v = getattr(_p, "__version__", "")
-        return "ok", f"paho-mqtt{(' ' + v) if v else ''}"
-    except ImportError:
-        return "warn", "paho-mqtt — not installed (optional)"
-
-
 def _check_settings() -> tuple[str, str]:
     from PyQt6.QtCore import QSettings
     s = QSettings("HRMMonitor", "Settings")
@@ -210,15 +199,16 @@ class SplashBoot(QWidget):
     finished = pyqtSignal()
 
     # Base timings (full-speed). All scaled by _spd at runtime.
+    # Each entry: (delay_ms, check_fn, pip_install_spec_or_None)
+    # pip_install_spec is set for packages we can auto-install.
     _BASE_CHECKS = [
-        (540, _check_python),
-        (360, _check_pyqt6),
-        (360, _check_websocket),
-        (360, lambda: _check_pkg("pythonosc",  "python-osc")),
-        (360, lambda: _check_pkg("openvr",     "openvr")),
-        (360, lambda: _check_pkg("spotipy",    "spotipy")),
-        (360, _check_paho),
-        (480, _check_settings),
+        (540, _check_python,                                  None),
+        (360, _check_pyqt6,                                   "PyQt6>=6.6.0"),
+        (360, _check_websocket,                               "websocket-client>=1.7.0"),
+        (360, lambda: _check_pkg("pythonosc",  "python-osc"), "python-osc>=1.8.0"),
+        (360, lambda: _check_pkg("openvr",     "openvr"),     "openvr>=1.26.701"),
+        (360, lambda: _check_pkg("spotipy",    "spotipy"),    "spotipy>=2.23.0"),
+        (480, _check_settings,                                None),
     ]
     _BASE_INTRO    = 2100
     _BASE_POLL     = 480
@@ -240,8 +230,9 @@ class SplashBoot(QWidget):
         _s   = _QS("HRMMonitor", "Settings")
         _fb  = _s.value("fast_boot", False)
         _spd = 0.25 if (str(_fb).lower() == "true") else 1.0
-        self._checks   = [(max(30, int(d * _spd)), fn)
-                          for d, fn in self._BASE_CHECKS]
+        self._checks   = [(max(30, int(d * _spd)), fn, spec)
+                          for d, fn, spec in self._BASE_CHECKS]
+        self._pip_result: bool | None = None   # None=busy True=ok False=failed
         self._t_intro   = max(100, int(self._BASE_INTRO    * _spd))
         self._t_poll    = max(60,  int(self._BASE_POLL     * _spd))
         self._t_final   = max(60,  int(self._BASE_FINALISE * _spd))
@@ -375,21 +366,65 @@ class SplashBoot(QWidget):
 
     # ── Package check sequencer ───────────────────────────────────
     def _pkg_step(self):
-        """Run one package check, then schedule the next."""
+        """Run one package check; auto-install if missing, then continue."""
         checks = self._checks
         if self._pkg_idx < len(checks):
-            delay, fn = checks[self._pkg_idx]
-            tag, msg  = fn()
-            if tag == "error":
-                self._has_error = True
-            self._append(tag, msg)
-            self._pkg_idx += 1
-            self._step_timer.start(delay)
+            delay, fn, pip_spec = checks[self._pkg_idx]
+            tag, msg            = fn()
+            self._pkg_idx      += 1
+
+            if tag in ("warn", "error") and pip_spec:
+                # Package is missing and we know how to install it
+                pkg_name = pip_spec.split(">=")[0]
+                self._append("run", f"Installing {pkg_name}…")
+                self._status_lbl.setText(f"Installing {pkg_name}…")
+                self._pip_result = None
+                threading.Thread(
+                    target=self._pip_install,
+                    args=(pip_spec, fn, delay),
+                    daemon=True,
+                ).start()
+                # Sequencer is paused — _pip_install will re-arm it
+            else:
+                if tag == "error":
+                    self._has_error = True
+                self._append(tag, msg)
+                self._step_timer.start(delay)
         else:
             # All package checks done — move to update step
             self._append("run", "Checking for updates…")
             self._status_lbl.setText("Checking for updates…")
             self._poll_update()
+
+    def _pip_install(self, spec: str, recheck_fn, delay: int):
+        """
+        Runs pip install <spec> in a background thread.
+        On completion, fires a QTimer.singleShot(0, ...) to update the
+        log and re-arm the sequencer safely on the main thread.
+        """
+        import subprocess
+        flags = subprocess.CREATE_NO_WINDOW if sys.platform == "win32" else 0
+        try:
+            result = subprocess.run(
+                [sys.executable, "-m", "pip", "install", spec],
+                capture_output=True,
+                creationflags=flags,
+                timeout=120,
+            )
+            ok = result.returncode == 0
+        except Exception:
+            ok = False
+
+        def _on_done():
+            if ok:
+                tag, msg = recheck_fn()
+                self._append(tag if tag == "ok" else "ok", msg)
+            else:
+                pkg = spec.split(">=")[0]
+                self._append("warn", f"{pkg} — install failed (optional)")
+            self._step_timer.start(delay)
+
+        QTimer.singleShot(0, _on_done)
 
     # ── Wait for update thread ────────────────────────────────────
     def _poll_update(self):
@@ -440,7 +475,7 @@ class SplashBoot(QWidget):
                         src = pathlib.Path(tmpdir)
 
                     copied = 0
-                    for pattern in ("*.py", "*.txt", "*.spec"):
+                    for pattern in ("*.py", "*.txt", "*.bat", "*.spec"):
                         for f in src.glob(pattern):
                             shutil.copy2(f, app_dir / f.name)
                             copied += 1
@@ -478,7 +513,7 @@ class SplashBoot(QWidget):
     # ── Final lines ───────────────────────────────────────────────
     def _finalise(self):
         if self._has_error:
-            self._append("warn", "Some required packages are missing — check requirements.txt")
+            self._append("warn", "Some packages could not be installed — run install_deps.bat")
         else:
             self._append("ok", "All systems nominal")
 

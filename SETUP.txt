@@ -18,37 +18,28 @@
 
 
 -----------------------------------------------------------
-  STEP 1 — Install Core Dependencies
+  STEP 1 — Install Dependencies
 -----------------------------------------------------------
 
-  Open a terminal (Command Prompt or PowerShell) inside
-  the HRM Monitor folder, then run:
+  EASIEST: Double-click install_deps.bat
+  It checks for Python, installs everything, and tells you
+  when it's done. No terminal needed.
 
-      pip install PyQt6 websocket-client python-osc
+  OR run manually in a terminal:
+      pip install -r requirements.txt
 
-  That covers the overlay, heart animation, BPM graph,
-  OSC sending, and chatbox.
-
-
------------------------------------------------------------
-  STEP 2 — Install Optional Dependencies
------------------------------------------------------------
-
-  For Spotify Now Playing support:
-      pip install spotipy
-
-  For SteamVR wrist overlay support:
-      pip install openvr
+  The app will also auto-install any missing packages on
+  first launch — so if you forget this step it still works.
 
 
 -----------------------------------------------------------
-  STEP 3 — Run the App
+  STEP 2 — Run the App
 -----------------------------------------------------------
 
       python main.py
 
-  The settings window will open. Configure your token and
-  options, then click START OVERLAY.
+  The settings window will open. Configure your Pulsoid
+  token and options, then click START OVERLAY.
 
 
 -----------------------------------------------------------
@@ -60,7 +51,7 @@
   3. Copy your Access Token.
   4. Paste it into the "Pulsoid Token" field in HRM Monitor.
 
-  The overlay will connect automatically when you start it.
+  The overlay connects automatically when you start it.
 
 
 -----------------------------------------------------------
@@ -86,8 +77,7 @@
      You can rename these in the OSC tab to match whatever
      parameter names your avatar uses.
 
-  5. Click START OVERLAY. Your avatar parameters will start
-     updating every second.
+  5. Click START OVERLAY. Avatar parameters update every second.
 
 
 -----------------------------------------------------------
@@ -155,22 +145,27 @@
   FRIEND HR SHARING
 -----------------------------------------------------------
 
-  Share your live BPM with a friend so they can watch it
-  on their own overlay.
+  Share your live BPM with a friend — no port forwarding,
+  no extra software. Uses Ably Realtime over port 443.
+
+  SETUP (host and viewer both need this):
+  1. Get a FREE Ably API key at https://ably.com
+     (Sign up → Create App → Copy API key)
+  2. In HRM Monitor → Settings, paste the key into:
+       "Ably API Key" under Friend HR Sharing
 
   AS THE HOST (broadcaster):
-  1. In the Main tab, check "Broadcast HR (port 5050)".
-  2. Click START OVERLAY.
-  3. Share your IP address — it's shown in the Viewer tab.
-  4. A notification will pop up when a friend connects.
+  1. In the Main tab, check "Enable Friend HR Sharing".
+  2. Note your 6-character Room Code shown on screen.
+  3. Share the Room Code with your friend.
+  4. Click START OVERLAY. A notification pops when a
+     friend connects.
 
   AS THE VIEWER (friend):
   1. Open HRM Monitor and go to the Viewer tab.
-  2. Enter the host's IP address.
+  2. Enter the host's Room Code.
   3. Click CONNECT & WATCH.
-
-  If it can't connect, the overlay will tell you exactly
-  why (refused, timed out, unreachable, etc.).
+  4. The viewer overlay shows the host's live BPM.
 
 
 -----------------------------------------------------------
@@ -181,14 +176,15 @@
 
   1. Make sure openvr is installed:
        pip install openvr
+     (or double-click install_deps.bat)
 
   2. Start SteamVR BEFORE launching HRM Monitor.
 
   3. In the Main tab, check "Enable SteamVR wrist overlay".
 
   4. Click START OVERLAY. Your BPM will appear on your
-     left wrist. It auto-switches back to desktop mode
-     when SteamVR closes.
+     left wrist. Auto-switches back to desktop when
+     SteamVR closes.
 
 
 -----------------------------------------------------------
@@ -205,6 +201,12 @@
     → Delete the file ~/.spotify_cache and restart to
       force a fresh browser login.
 
+  Friend sharing not working?
+    → Both host and viewer need a valid Ably API key.
+    → Make sure the Room Code is entered exactly (case
+      insensitive — the app converts to uppercase).
+    → Get a free key at https://ably.com
+
   SteamVR overlay not appearing?
     → Make sure SteamVR is running before starting.
     → Confirm openvr installed without errors.
@@ -217,6 +219,10 @@
   App crashed?
     → Check your Desktop for HRMMonitor_crash.log.
       It contains the full error traceback.
+
+  Missing packages?
+    → Double-click install_deps.bat and re-run.
+    → Or run: pip install -r requirements.txt
 
 
 -----------------------------------------------------------

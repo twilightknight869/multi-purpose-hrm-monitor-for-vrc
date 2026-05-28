@@ -1,63 +1,31 @@
 # ============================================================
-#  HRM Monitor — Requirements
+#  HRM Monitor — Python Dependencies
 #  Questions? Discord: crimsondreamz
 # ============================================================
 #
-# STEP 1 — INSTALL PYTHON
-# -----------------------
-# 1. Go to https://www.python.org/downloads/
-# 2. Download Python 3.10 or newer
-# 3. Run the installer — check "Add python.exe to PATH" on the first screen
-# 4. Verify in a new terminal:  python --version
+# QUICK INSTALL (recommended — runs everything below at once):
+#   Double-click install_deps.bat
 #
-#
-# STEP 2 — INSTALL DEPENDENCIES
-# ------------------------------
-#   Install everything at once (recommended):
-#     pip install -r requirements.txt
-#
-#   Or install individually:
-#     pip install PyQt6>=6.6.0
-#     pip install websocket-client>=1.7.0
-#
-#   Optional — VRChat OSC, chatbox, status rotation:
-#     pip install python-osc>=1.8.0
-#
-#   Optional — SteamVR wrist overlay:
-#     pip install openvr>=1.26.701
-#
-#   Optional — Spotify Now Playing:
-#     pip install spotipy>=2.23.0
-#
-#   Optional — Friend HR sharing (no port forwarding):
-#     pip install paho-mqtt>=1.6.1
-#
-#
-# STEP 3 — RUN
-# ------------
-#   python main.py
-#
-#
-# STEP 4 — BUILD EXE (optional)
-# ------------------------------
-#   pip install pyinstaller
-#   pyinstaller overlay.spec
-#   Output: dist/HRMMonitor.exe
+#   OR run in a terminal:
+#   pip install -r requirements.txt
 #
 # ============================================================
 
-# Core (required)
+# ── Core (required) ─────────────────────────────────────────
 PyQt6>=6.6.0
 websocket-client>=1.7.0
 
-# VRChat OSC + chatbox + status rotation (optional)
+# ── VRChat OSC / chatbox / status rotation (optional) ───────
 python-osc>=1.8.0
 
-# SteamVR wrist overlay (optional)
+# ── SteamVR wrist overlay (optional) ────────────────────────
 openvr>=1.26.701
 
-# Spotify Now Playing (optional)
+# ── Spotify Now Playing (optional) ──────────────────────────
 spotipy>=2.23.0
 
-# Friend HR sharing — no port forwarding needed (optional)
-paho-mqtt>=1.6.1
+# ── Friend HR sharing ────────────────────────────────────────
+# No extra packages needed — uses Ably Realtime over port 443
+# (pure Python urllib + urllib.request, built into Python).
+# Get a free Ably API key at https://ably.com and paste it
+# in HRM Monitor Settings → Friend HR Sharing.
