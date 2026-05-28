@@ -1,0 +1,228 @@
+===========================================================
+  HRM Monitor — Setup & Installation Guide
+  Made by CRIMSON
+  Questions? Discord: crimsondreamz
+===========================================================
+
+
+-----------------------------------------------------------
+  REQUIREMENTS
+-----------------------------------------------------------
+
+  - Python 3.10 or newer
+      Download: https://www.python.org/downloads/
+      IMPORTANT: Check "Add Python to PATH" during install.
+
+  - A Pulsoid account and a compatible heart rate monitor
+      Website: https://pulsoid.net
+
+
+-----------------------------------------------------------
+  STEP 1 — Install Core Dependencies
+-----------------------------------------------------------
+
+  Open a terminal (Command Prompt or PowerShell) inside
+  the HRM Monitor folder, then run:
+
+      pip install PyQt6 websocket-client python-osc
+
+  That covers the overlay, heart animation, BPM graph,
+  OSC sending, and chatbox.
+
+
+-----------------------------------------------------------
+  STEP 2 — Install Optional Dependencies
+-----------------------------------------------------------
+
+  For Spotify Now Playing support:
+      pip install spotipy
+
+  For SteamVR wrist overlay support:
+      pip install openvr
+
+
+-----------------------------------------------------------
+  STEP 3 — Run the App
+-----------------------------------------------------------
+
+      python main.py
+
+  The settings window will open. Configure your token and
+  options, then click START OVERLAY.
+
+
+-----------------------------------------------------------
+  GETTING YOUR PULSOID TOKEN
+-----------------------------------------------------------
+
+  1. Go to https://pulsoid.net and log in.
+  2. Click Settings → Integrations → Manual connection.
+  3. Copy your Access Token.
+  4. Paste it into the "Pulsoid Token" field in HRM Monitor.
+
+  The overlay will connect automatically when you start it.
+
+
+-----------------------------------------------------------
+  VRC OSC INTEGRATION
+-----------------------------------------------------------
+
+  Lets your avatar react to your real heart rate.
+
+  1. Open VRChat and go to:
+       Settings → OSC → Enable OSC (toggle on)
+
+  2. In HRM Monitor, open the OSC tab and check:
+       "Enable VRChat OSC"
+
+  3. Default settings (correct for local VRChat):
+       IP:    127.0.0.1
+       Port:  9000
+
+  4. Your avatar needs these OSC float parameters:
+       HR          — your numeric BPM (0–255)
+       HRPercent   — your BPM as a 0–1 percentage of 255
+
+     You can rename these in the OSC tab to match whatever
+     parameter names your avatar uses.
+
+  5. Click START OVERLAY. Your avatar parameters will start
+     updating every second.
+
+
+-----------------------------------------------------------
+  VRC CHATBOX INTEGRATION
+-----------------------------------------------------------
+
+  Sends your heart rate to the VRChat chatbox bubble above
+  your head.
+
+  1. In HRM Monitor, go to the OSC tab.
+  2. Check "Send HR to VRChat chatbox".
+  3. Edit the chatbox template using these placeholders:
+
+       {bpm}    — numeric BPM (e.g. 95)
+       {bar}    — 10-segment block bar (e.g. ████████░░)
+       {tier}   — LOW / MED / HIGH
+       {icon}   — heart emoji for your tier (💚 🧡 ❤️)
+       {track}  — Spotify track name (if Spotify enabled)
+       {artist} — Spotify artist name (if Spotify enabled)
+
+     Default template:  {icon} {bpm} BPM  [{bar}]
+
+  4. The preview box shows exactly how it will look in game.
+
+  STATUS ROTATION (optional):
+  Go to the Status tab to add lines that cycle below your
+  HR line in the chatbox. Supports the same placeholders.
+
+
+-----------------------------------------------------------
+  SPOTIFY INTEGRATION
+-----------------------------------------------------------
+
+  Shows your current track on the overlay and optionally
+  embeds it in the VRChat chatbox.
+
+  STEP A — Create a Spotify App:
+  1. Go to https://developer.spotify.com/dashboard
+     and log in with your Spotify account.
+  2. Click "Create App".
+  3. Fill in any name and description.
+  4. Set the Redirect URI to EXACTLY:
+       http://127.0.0.1:8888/callback
+     (Must match exactly or authentication will fail.)
+  5. Save the app and open it.
+  6. Copy your Client ID and Client Secret.
+
+  STEP B — Configure in HRM Monitor:
+  1. Go to the Spotify tab.
+  2. Check "Enable Spotify Now Playing".
+  3. Paste your Client ID, Client Secret, and the
+     Redirect URI: http://127.0.0.1:8888/callback
+  4. Click START OVERLAY.
+  5. A browser window will open asking you to log in
+     and authorize. Do so and close the page.
+  6. The token is saved locally — you won't need to
+     log in again unless you clear the cache.
+
+  To show the track in your chatbox, check
+  "Include Spotify track in chatbox" in the OSC tab
+  and use {track} / {artist} in your template.
+
+
+-----------------------------------------------------------
+  FRIEND HR SHARING
+-----------------------------------------------------------
+
+  Share your live BPM with a friend so they can watch it
+  on their own overlay.
+
+  AS THE HOST (broadcaster):
+  1. In the Main tab, check "Broadcast HR (port 5050)".
+  2. Click START OVERLAY.
+  3. Share your IP address — it's shown in the Viewer tab.
+  4. A notification will pop up when a friend connects.
+
+  AS THE VIEWER (friend):
+  1. Open HRM Monitor and go to the Viewer tab.
+  2. Enter the host's IP address.
+  3. Click CONNECT & WATCH.
+
+  If it can't connect, the overlay will tell you exactly
+  why (refused, timed out, unreachable, etc.).
+
+
+-----------------------------------------------------------
+  STEAMVR WRIST OVERLAY
+-----------------------------------------------------------
+
+  Shows your BPM on your left wrist in VR.
+
+  1. Make sure openvr is installed:
+       pip install openvr
+
+  2. Start SteamVR BEFORE launching HRM Monitor.
+
+  3. In the Main tab, check "Enable SteamVR wrist overlay".
+
+  4. Click START OVERLAY. Your BPM will appear on your
+     left wrist. It auto-switches back to desktop mode
+     when SteamVR closes.
+
+
+-----------------------------------------------------------
+  TROUBLESHOOTING
+-----------------------------------------------------------
+
+  Chatbox not showing in VRChat?
+    → Make sure OSC is enabled in VRChat settings.
+    → Check the port is 9000 and IP is 127.0.0.1.
+    → VRChat rate-limits the chatbox to ~1 update per 3s.
+
+  Spotify not updating?
+    → Double-check Client ID and Secret are correct.
+    → Delete the file ~/.spotify_cache and restart to
+      force a fresh browser login.
+
+  SteamVR overlay not appearing?
+    → Make sure SteamVR is running before starting.
+    → Confirm openvr installed without errors.
+
+  BPM stuck or not updating?
+    → Check your Pulsoid token is correct.
+    → Make sure your heart rate monitor is connected
+      and streaming in the Pulsoid app.
+
+  App crashed?
+    → Check your Desktop for HRMMonitor_crash.log.
+      It contains the full error traceback.
+
+
+-----------------------------------------------------------
+  QUESTIONS & SUPPORT
+-----------------------------------------------------------
+
+  Discord: crimsondreamz
+
+===========================================================

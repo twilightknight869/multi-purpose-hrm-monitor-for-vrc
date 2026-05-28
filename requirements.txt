@@ -1,0 +1,85 @@
+# ============================================================
+#  Horror Heart Rate Overlay — Requirements & Setup Guide
+# ============================================================
+#
+# STEP 1 — INSTALL PYTHON
+# -----------------------
+# 1. Go to https://www.python.org/downloads/
+# 2. Download the latest Python 3.12.x installer for Windows
+# 3. Run the installer
+#    !! On the first screen, check "Add python.exe to PATH" !!
+#    Then click "Install Now"
+# 4. Open a new Command Prompt and verify:
+#      python --version
+#      pip --version
+#
+#
+# STEP 2 — INSTALL DEPENDENCIES
+# ------------------------------
+#   Install everything at once (recommended):
+#     pip install -r requirements.txt
+#
+#   Or install individually:
+#     pip install PyQt6>=6.6.0
+#     pip install websocket-client>=1.7.0
+#     pip install pyinstaller>=6.3.0
+#
+#   Optional — VRChat OSC + chatbox + status rotator:
+#     pip install python-osc>=1.8.0
+#
+#   Optional — SteamVR wrist overlay:
+#     pip install openvr>=1.26.701
+#
+#   Optional — Spotify Now Playing:
+#     pip install spotipy>=2.23.0
+#     (also requires a free Spotify Developer app —
+#      create one at developer.spotify.com/dashboard)
+#
+#
+# STEP 3 — RUN THE OVERLAY
+# ------------------------
+#   python main.py
+#
+#
+# STEP 4 — BUILD THE EXE (optional)
+# ----------------------------------
+#   pyinstaller overlay.spec
+#   The exe will appear in the dist/ folder as HorrorOverlay.exe
+#
+#
+# SPOTIFY SETUP
+# -------------
+#   1. Go to developer.spotify.com/dashboard and create an app.
+#   2. Add  http://localhost:8888/callback  as a Redirect URI.
+#   3. Copy your Client ID and Client Secret into the
+#      🎵 Spotify tab inside the overlay settings.
+#   4. Check "Enable Spotify Now Playing" and click Start.
+#      A browser window will open once to authorise — after that
+#      it runs silently in the background.
+#
+#
+# FRIEND VIEWER
+# -------------
+#   Host:   Check "Broadcast my HR" in Settings before starting.
+#           Share your displayed IP with your friend.
+#           Forward port 5050 in your router for internet play.
+#
+#   Friend: Open HorrorOverlay.exe, go to the 👁 Viewer tab,
+#           enter the host's IP and click Watch.
+#           No Pulsoid account needed to view.
+#
+# ============================================================
+
+# Required
+PyQt6>=6.6.0
+websocket-client>=1.7.0
+pyinstaller>=6.3.0
+
+# Optional — VRChat OSC / chatbox / status rotator
+python-osc>=1.8.0
+
+# Optional — SteamVR wrist overlay
+openvr>=1.26.701
+
+# Optional — Spotify Now Playing
+spotipy>=2.23.0

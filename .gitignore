@@ -1,0 +1,4 @@
+__pycache__/
+*.pyc
+.spotify_cache
+upload_to_github.ps1
