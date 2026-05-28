@@ -397,8 +397,7 @@ class ViewerOverlay(QWidget):
 
     def __init__(self, room_code: str):
         super().__init__()
-        self.room_code    = room_code.strip().upper()
-        self._mqtt_client = None
+        self.room_code = room_code.strip().upper()
 
         self.setWindowFlags(
             Qt.WindowType.FramelessWindowHint |
@@ -447,9 +446,9 @@ class ViewerOverlay(QWidget):
         top.addLayout(info)
         root.addLayout(top)
 
-        # Topic label — lets friend verify they're on the right channel
-        self._topic = f"{MQTT_TOPIC_PREFIX}/{self.room_code}/bpm"
-        topic_lbl = QLabel(f"topic: {self._topic}")
+        # Channel label — lets friend verify they're on the right Ably channel
+        self._channel = f"{ABLY_CHANNEL_PREFIX}/{self.room_code}"
+        topic_lbl = QLabel(f"channel: {self._channel}")
         topic_lbl.setFont(QFont("Consolas", 7))
         topic_lbl.setStyleSheet("color: #2a2a3a; background: transparent;")
         topic_lbl.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
