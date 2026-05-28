@@ -17,7 +17,7 @@ from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel,
     QApplication, QFrame, QScrollArea,
 )
-from PyQt6.QtCore import Qt, QTimer, pyqtSignal
+from PyQt6.QtCore import Qt, QTimer, QObject, pyqtSignal
 from PyQt6.QtGui import QFont, QPainter, QColor, QPen
 
 from constants import DARK_STYLE, VERSION, GITHUB_OWNER, GITHUB_REPO
@@ -510,3 +510,45 @@ class SplashBoot(QWidget):
         ))
         # Mirror to status bar (trimmed)
         self._status_lbl.setText(msg[:68] if len(msg) > 68 else msg)
+
+
+# ===========================================================
+#  Runtime Update Watcher — runs while the app is open
+# ===========================================================
+class UpdateWatcher(QObject):
+    """
+    Checks GitHub for a newer release every 15 minutes while the app
+    is running.  Emits ``update_found(url)`` on the Qt main thread
+    when a newer version is detected.
+    """
+    update_found = pyqtSignal(str)   # download URL of the new release
+
+    _CHECK_INTERVAL_MS = 15 * 60 * 1000   # 15 minutes
+    _FIRST_CHECK_MS    =  2 * 60 * 1000   # first check 2 min after launch
+
+    def __init__(self, parent: QObject | None = None):
+        super().__init__(parent)
+        self._busy = False
+
+        self._timer = QTimer(self)
+        self._timer.timeout.connect(self._kick)
+        self._timer.start(self._CHECK_INTERVAL_MS)
+
+        # First check fires a little after launch so the UI is settled
+        QTimer.singleShot(self._FIRST_CHECK_MS, self._kick)
+
+    def _kick(self):
+        if self._busy:
+            return
+        self._busy = True
+        threading.Thread(target=self._run, daemon=True).start()
+
+    def _run(self):
+        """Runs off the main thread."""
+        try:
+            _, _, url = _fetch_update()
+        except Exception:
+            url = None
+        self._busy = False
+        if url:
+            self.update_found.emit(url)

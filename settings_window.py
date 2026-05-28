@@ -1,7 +1,15 @@
 # ===========================================================
 #  HRM Monitor — Settings Window
 # ===========================================================
+import os
+import sys
+import pathlib
+import shutil
+import tempfile
 import threading
+import urllib.request
+import zipfile
+import json
 
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
@@ -20,6 +28,7 @@ from constants import (
     DEFAULT_CHATBOX_TEMPLATE, DEFAULT_STATUS_ENTRIES,
     STATUS_ROTATE_SEC, DARK_STYLE,
 )
+from bootloader import UpdateWatcher
 from overlay_window import Overlay, ViewerOverlay
 from widgets import BPMGraph, HeartWidget
 
@@ -42,6 +51,202 @@ except ImportError:
     SPOTIPY_OK = False
 
 
+# ===========================================================
+#  Runtime Update Alert — countdown popup
+# ===========================================================
+class _UpdateAlert(QWidget):
+    """
+    Frameless floating alert that appears when a runtime update is
+    detected.  Counts down from 10 seconds then downloads + restarts.
+    The user can also click 'Restart Now' or 'Skip'.
+    """
+
+    def __init__(self, download_url: str):
+        super().__init__(
+            None,
+            Qt.WindowType.FramelessWindowHint
+            | Qt.WindowType.WindowStaysOnTopHint
+            | Qt.WindowType.Tool,
+        )
+        self._url      = download_url
+        self._secs     = 10
+        self._downloading = False
+
+        self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
+        self.setFixedSize(380, 160)
+        self._center()
+        self.setStyleSheet("""
+            QWidget#alert_bg {
+                background: #0d0000;
+                border: 1px solid #cc0000;
+                border-radius: 10px;
+            }
+            QLabel  { background: transparent; border: none; }
+            QPushButton {
+                background: #1a0000; border: 1px solid #880000;
+                border-radius: 6px; color: #ff5555;
+                padding: 6px 16px; font-weight: bold; font-size: 12px;
+            }
+            QPushButton:hover  { background: #2a0000; border-color: #cc0000; }
+            QPushButton:pressed { background: #440000; }
+        """)
+
+        # ── Outer layout (transparent, gives shadow space) ────────
+        outer = QVBoxLayout(self)
+        outer.setContentsMargins(0, 0, 0, 0)
+
+        bg = QWidget(objectName="alert_bg")
+        outer.addWidget(bg)
+
+        vbox = QVBoxLayout(bg)
+        vbox.setContentsMargins(18, 14, 18, 14)
+        vbox.setSpacing(6)
+
+        # Title row
+        title_row = QHBoxLayout()
+        icon_lbl = QLabel("⬆")
+        icon_lbl.setFont(QFont("Segoe UI Emoji", 16))
+        icon_lbl.setStyleSheet("color: #ff4444; background: transparent; border: none;")
+        title_row.addWidget(icon_lbl)
+
+        title_lbl = QLabel("  Update Available!")
+        title_lbl.setFont(QFont("Segoe UI", 13, QFont.Weight.Bold))
+        title_lbl.setStyleSheet("color: #ff4444; background: transparent; border: none;")
+        title_row.addWidget(title_lbl)
+        title_row.addStretch()
+        vbox.addLayout(title_row)
+
+        # Countdown label
+        self._count_lbl = QLabel(f"Restarting in {self._secs} seconds…")
+        self._count_lbl.setFont(QFont("Segoe UI", 10))
+        self._count_lbl.setStyleSheet("color: #cc8888; background: transparent; border: none;")
+        vbox.addWidget(self._count_lbl)
+
+        # Status label (shows download progress / errors)
+        self._status_lbl = QLabel("")
+        self._status_lbl.setFont(QFont("Consolas", 9))
+        self._status_lbl.setStyleSheet("color: #886666; background: transparent; border: none;")
+        vbox.addWidget(self._status_lbl)
+
+        vbox.addStretch()
+
+        # Buttons
+        btn_row = QHBoxLayout()
+        btn_row.setSpacing(8)
+
+        self._now_btn = QPushButton("Restart Now")
+        self._now_btn.clicked.connect(self._do_restart_now)
+        btn_row.addWidget(self._now_btn)
+
+        skip_btn = QPushButton("Skip")
+        skip_btn.setStyleSheet(
+            "QPushButton { background: #0a0000; border-color: #440000; color: #884444; }"
+            "QPushButton:hover { background: #150000; border-color: #660000; color: #aa5555; }"
+        )
+        skip_btn.clicked.connect(self.close)
+        btn_row.addWidget(skip_btn)
+
+        vbox.addLayout(btn_row)
+
+        # ── Countdown timer ───────────────────────────────────────
+        self._countdown = QTimer(self)
+        self._countdown.timeout.connect(self._tick)
+        self._countdown.start(1000)
+
+        # ── Install state ─────────────────────────────────────────
+        self._install_ok  = None   # None=pending True=ok False=failed
+        self._install_msg = ""
+
+    # ── Helpers ───────────────────────────────────────────────────
+    def _center(self):
+        geo = QApplication.primaryScreen().availableGeometry()
+        self.move(
+            geo.x() + (geo.width()  - self.width())  // 2,
+            geo.y() + (geo.height() - self.height()) // 2 - 60,
+        )
+
+    def _tick(self):
+        self._secs -= 1
+        if self._secs <= 0:
+            self._countdown.stop()
+            self._begin_download()
+        else:
+            self._count_lbl.setText(f"Restarting in {self._secs} seconds…")
+
+    def _do_restart_now(self):
+        self._countdown.stop()
+        self._secs = 0
+        self._begin_download()
+
+    # ── Download + install ────────────────────────────────────────
+    def _begin_download(self):
+        if self._downloading:
+            return
+        self._downloading = True
+        self._now_btn.setEnabled(False)
+        self._count_lbl.setText("Downloading update…")
+        self._status_lbl.setText("Please wait…")
+        threading.Thread(target=self._download_worker, daemon=True).start()
+        QTimer.singleShot(300, self._poll_install)
+
+    def _download_worker(self):
+        try:
+            from constants import VERSION
+            app_dir = pathlib.Path(__file__).parent.resolve()
+
+            req = urllib.request.Request(
+                self._url,
+                headers={"User-Agent": f"HRMMonitor/{VERSION}"},
+            )
+            with tempfile.NamedTemporaryFile(suffix=".zip", delete=False) as tmp:
+                tmp_path = pathlib.Path(tmp.name)
+                with urllib.request.urlopen(req, timeout=60) as resp:
+                    shutil.copyfileobj(resp, tmp)
+
+            with zipfile.ZipFile(tmp_path) as zf:
+                names = zf.namelist()
+                inner = names[0].split("/")[0] if names else ""
+                with tempfile.TemporaryDirectory() as tmpdir:
+                    zf.extractall(tmpdir)
+                    src = pathlib.Path(tmpdir) / inner
+                    if not src.is_dir():
+                        src = pathlib.Path(tmpdir)
+                    copied = 0
+                    for pattern in ("*.py", "*.txt", "*.spec"):
+                        for f in src.glob(pattern):
+                            shutil.copy2(f, app_dir / f.name)
+                            copied += 1
+
+            tmp_path.unlink(missing_ok=True)
+            self._install_ok  = True
+            self._install_msg = f"Installed — {copied} files updated"
+
+        except Exception as e:
+            self._install_ok  = False
+            self._install_msg = f"Download failed: {e}"
+
+    def _poll_install(self):
+        if self._install_ok is None:
+            QTimer.singleShot(250, self._poll_install)
+            return
+
+        if self._install_ok:
+            self._count_lbl.setText("Update installed!")
+            self._status_lbl.setText(f"{self._install_msg} — restarting…")
+            QTimer.singleShot(1500, self._exec_restart)
+        else:
+            self._count_lbl.setText("Update failed")
+            self._status_lbl.setText(self._install_msg)
+            self._now_btn.setText("Retry")
+            self._now_btn.setEnabled(True)
+            self._downloading = False
+
+    @staticmethod
+    def _exec_restart():
+        os.execv(sys.executable, [sys.executable] + sys.argv)
+
+
+# ===========================================================
 class SettingsWindow(QWidget):
     def __init__(self):
         super().__init__()
@@ -104,9 +309,23 @@ class SettingsWindow(QWidget):
         self.mode_tabs.addTab(self._build_viewer_tab(),      "👁  Viewer")
 
         self.mode_tabs.setCurrentIndex(int(self.settings.value("last_tab", 0)))
-        
+
         # Initialize chatbox preview
         self._preview_chatbox()
+
+        # ── Runtime update watcher ───────────────────────────────
+        self._update_watcher = UpdateWatcher(self)
+        self._update_watcher.update_found.connect(self._on_runtime_update)
+        self._update_alert: _UpdateAlert | None = None
+
+    # ── Runtime update handler ────────────────────────────────────
+    def _on_runtime_update(self, url: str):
+        """Called on main thread when UpdateWatcher finds a newer version."""
+        if self._update_alert is not None:
+            return   # already showing one
+        self._update_alert = _UpdateAlert(url)
+        self._update_alert.destroyed.connect(lambda: setattr(self, "_update_alert", None))
+        self._update_alert.show()
 
     # ===========================================================
     #  BROADCASTER TAB
