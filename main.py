@@ -15,34 +15,45 @@ import traceback
 def _ensure_core_deps() -> None:
     """
     Install PyQt6 and websocket-client if they're absent.
-    Shows a console message then restarts via os.execv so
-    the fresh imports pick up the newly installed packages.
+    Runs BEFORE any PyQt6 import so it works on a brand-new system.
     """
     import subprocess
-    import os
 
     CORE = [
         ("PyQt6",     "PyQt6>=6.6.0"),
         ("websocket", "websocket-client>=1.7.0"),
     ]
 
-    missing = [pkg for name, pkg in CORE
-               if not __import__("importlib").util.find_spec(name)]
+    def _importable(name: str) -> bool:
+        try:
+            __import__(name)
+            return True
+        except ImportError:
+            return False
+
+    missing = [pkg for name, pkg in CORE if not _importable(name)]
 
     if not missing:
         return
 
-    flags = subprocess.CREATE_NO_WINDOW if sys.platform == "win32" else 0
-    print("[HRM Monitor] Installing missing core packages:", ", ".join(missing))
+    print("[HRM Monitor] Installing missing packages:", ", ".join(missing))
+    print("[HRM Monitor] This may take a minute...")
+
     result = subprocess.run(
         [sys.executable, "-m", "pip", "install"] + missing,
-        creationflags=flags,
     )
+
     if result.returncode == 0:
-        print("[HRM Monitor] Done — restarting…")
-        os.execv(sys.executable, [sys.executable] + sys.argv)
+        print("[HRM Monitor] Done. Restarting...")
+        # Spawn a fresh process and exit — os.execv is unreliable on Windows
+        subprocess.Popen([sys.executable] + sys.argv)
+        sys.exit(0)
     else:
-        print("[HRM Monitor] pip install failed — please run install_deps.bat")
+        print()
+        print("[HRM Monitor] ERROR: pip install failed.")
+        print("Please double-click install_deps.bat and try again.")
+        print()
+        input("Press Enter to close...")
         sys.exit(1)
 
 
