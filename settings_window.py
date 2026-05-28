@@ -886,8 +886,47 @@ class SettingsWindow(QWidget):
         sub.setWordWrap(True)
         layout.addWidget(sub)
 
-        layout.addSpacing(12)
+        layout.addSpacing(8)
 
+        # ── Ably API key (required for viewer too) ───────────────
+        ably_group = QGroupBox("Ably API Key  (required)")
+        ag = QVBoxLayout(ably_group)
+        ag.setContentsMargins(12, 8, 12, 12)
+        ag.setSpacing(6)
+
+        ably_info = QLabel("Free at  ably.com  — sign up, create an app, copy the API key.")
+        ably_info.setStyleSheet("color: #555555; font-size: 11px;")
+        ably_info.setWordWrap(True)
+        ag.addWidget(ably_info)
+
+        key_row = QHBoxLayout()
+        key_row.setSpacing(6)
+        self.viewer_ably_key_input = QLineEdit(self.settings.value("ably_api_key", ""))
+        self.viewer_ably_key_input.setPlaceholderText("Paste your Ably API key here")
+        self.viewer_ably_key_input.setEchoMode(QLineEdit.EchoMode.Password)
+        key_row.addWidget(self.viewer_ably_key_input)
+
+        show_key_btn = QPushButton("Show")
+        show_key_btn.setFixedWidth(54)
+        show_key_btn.clicked.connect(lambda: (
+            self.viewer_ably_key_input.setEchoMode(
+                QLineEdit.EchoMode.Normal
+                if self.viewer_ably_key_input.echoMode() == QLineEdit.EchoMode.Password
+                else QLineEdit.EchoMode.Password
+            ),
+            show_key_btn.setText(
+                "Hide"
+                if self.viewer_ably_key_input.echoMode() == QLineEdit.EchoMode.Normal
+                else "Show"
+            ),
+        ))
+        key_row.addWidget(show_key_btn)
+        ag.addLayout(key_row)
+        layout.addWidget(ably_group)
+
+        layout.addSpacing(4)
+
+        # ── Room code ────────────────────────────────────────────
         code_group = QGroupBox("Room Code")
         cg = QVBoxLayout(code_group)
         cg.setContentsMargins(12, 8, 12, 12)
@@ -1115,9 +1154,14 @@ class SettingsWindow(QWidget):
         if len(code) != ROOM_CODE_LEN:
             self.viewer_code_input.setPlaceholderText(f"need {ROOM_CODE_LEN} characters!")
             return
+
+        # Save the viewer Ably key (persists for next launch and syncs broadcaster field)
+        ably_key = self.viewer_ably_key_input.text().strip()
+        self.settings.setValue("ably_api_key", ably_key)
+        if hasattr(self, "ably_key_input"):
+            self.ably_key_input.setText(ably_key)  # keep broadcaster field in sync
+
         self.settings.setValue("viewer_code", code)
-        # Save Ably key in case it was just entered on the host side
-        self.settings.setValue("ably_api_key", self.ably_key_input.text().strip())
         viewer = ViewerOverlay(code)
         QApplication.instance()._viewer = viewer
         viewer.show()
