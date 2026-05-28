@@ -2,10 +2,15 @@
 # ===========================================================
 #  HRM Monitor — Boot Splash & Startup Checker
 # ===========================================================
+import os
 import sys
+import pathlib
+import shutil
+import tempfile
 import threading
 import urllib.request
 import urllib.error
+import zipfile
 import json
 
 from PyQt6.QtWidgets import (
@@ -107,8 +112,12 @@ def _check_settings() -> tuple[str, str]:
     return "warn", "Configuration loaded (no Pulsoid token set yet)"
 
 
-def _fetch_update() -> tuple[str, str]:
-    """Runs in a background thread — hits GitHub releases API."""
+def _fetch_update() -> tuple[str, str, str | None]:
+    """
+    Runs in a background thread — hits GitHub releases API.
+    Returns (tag, message, download_url_or_None).
+    download_url is set only when a newer version is available.
+    """
     url = (
         f"https://api.github.com/repos/"
         f"{GITHUB_OWNER}/{GITHUB_REPO}/releases/latest"
@@ -122,7 +131,7 @@ def _fetch_update() -> tuple[str, str]:
 
         latest = data.get("tag_name", "").lstrip("v")
         if not latest:
-            return "info", "Update check — no releases published yet"
+            return "info", "Update check — no releases published yet", None
 
         def _vtuple(s: str):
             try:
@@ -131,17 +140,22 @@ def _fetch_update() -> tuple[str, str]:
                 return (0,)
 
         if _vtuple(latest) > _vtuple(VERSION):
-            return "warn", f"Update available!  v{latest}  (you have v{VERSION})"
-        return "ok", f"v{VERSION} — up to date"
+            dl_url = data.get("zipball_url", "")
+            return (
+                "warn",
+                f"New version v{latest} found — downloading update…",
+                dl_url,
+            )
+        return "ok", f"v{VERSION} — up to date", None
 
     except urllib.error.HTTPError as e:
         if e.code == 404:
-            return "info", "No releases published yet — you are on the latest build"
-        return "info", f"Update check failed (HTTP {e.code})"
+            return "info", "No releases published yet — you are on the latest build", None
+        return "info", f"Update check failed (HTTP {e.code})", None
     except urllib.error.URLError:
-        return "info", "Update check skipped (no internet connection)"
+        return "info", "Update check skipped (no internet connection)", None
     except Exception as e:
-        return "info", f"Update check skipped ({type(e).__name__})"
+        return "info", f"Update check skipped ({type(e).__name__})", None
 
 
 # ===========================================================
@@ -309,11 +323,14 @@ class SplashBoot(QWidget):
         root.addWidget(self._status_lbl)
 
         # ── State ─────────────────────────────────────────────────
-        self._pkg_idx     = 0
-        self._has_error   = False
-        self._update_tag  = None   # set by background thread
-        self._update_msg  = None
-        self._update_done = False
+        self._pkg_idx      = 0
+        self._has_error    = False
+        self._update_tag   = None   # set by background thread
+        self._update_msg   = None
+        self._update_url   = None   # non-None when a newer version exists
+        self._update_done  = False
+        self._install_result = None  # None=pending True=ok False=failed
+        self._install_msg  = ""
 
         # ── Heart beat ────────────────────────────────────────────
         self._beat_on = False
@@ -350,9 +367,10 @@ class SplashBoot(QWidget):
 
     # ── Background update fetch ───────────────────────────────────
     def _bg_update(self):
-        tag, msg = _fetch_update()
+        tag, msg, url     = _fetch_update()
         self._update_tag  = tag
         self._update_msg  = msg
+        self._update_url  = url
         self._update_done = True
 
     # ── Package check sequencer ───────────────────────────────────
@@ -376,13 +394,86 @@ class SplashBoot(QWidget):
     # ── Wait for update thread ────────────────────────────────────
     def _poll_update(self):
         if self._update_done:
-            # Replace the "run" placeholder — just append the real result
             self._append(self._update_tag, self._update_msg)
-            if self._update_tag == "warn" and "Update available" in self._update_msg:
-                self._status_lbl.setText("⬆ Update available!")
-            QTimer.singleShot(self._t_final, self._finalise)
+            if self._update_url:
+                # New version found — kick off auto-update immediately
+                QTimer.singleShot(400, lambda: self._start_auto_update(self._update_url))
+            else:
+                QTimer.singleShot(self._t_final, self._finalise)
         else:
             QTimer.singleShot(self._t_poll, self._poll_update)
+
+    # ── Auto-updater ──────────────────────────────────────────────
+    def _start_auto_update(self, url: str):
+        self._append("run", "Downloading update…")
+        self._status_lbl.setText("Downloading update…")
+        threading.Thread(
+            target=self._do_download, args=(url,), daemon=True
+        ).start()
+        QTimer.singleShot(300, self._poll_install)
+
+    def _do_download(self, url: str):
+        """Runs in a background thread. Downloads zip, extracts, copies files."""
+        try:
+            # Use __file__ (bootloader.py's own location) rather than sys.argv[0]
+            # so the path is correct regardless of the working directory at launch.
+            app_dir = pathlib.Path(__file__).parent.resolve()
+
+            # ── Download zipball ──────────────────────────────────
+            req = urllib.request.Request(
+                url, headers={"User-Agent": f"HRMMonitor/{VERSION}"}
+            )
+            with tempfile.NamedTemporaryFile(suffix=".zip", delete=False) as tmp:
+                tmp_path = pathlib.Path(tmp.name)
+                with urllib.request.urlopen(req, timeout=60) as resp:
+                    shutil.copyfileobj(resp, tmp)
+
+            # ── Extract & copy files ──────────────────────────────
+            with zipfile.ZipFile(tmp_path) as zf:
+                names = zf.namelist()
+                # GitHub zipballs have one top-level dir: owner-repo-sha/
+                inner = names[0].split("/")[0] if names else ""
+                with tempfile.TemporaryDirectory() as tmpdir:
+                    zf.extractall(tmpdir)
+                    src = pathlib.Path(tmpdir) / inner
+                    if not src.is_dir():
+                        src = pathlib.Path(tmpdir)
+
+                    copied = 0
+                    for pattern in ("*.py", "*.txt", "*.spec"):
+                        for f in src.glob(pattern):
+                            shutil.copy2(f, app_dir / f.name)
+                            copied += 1
+
+            tmp_path.unlink(missing_ok=True)
+            self._install_result = True
+            self._install_msg    = f"Update installed — {copied} files replaced"
+
+        except Exception as e:
+            self._install_result = False
+            self._install_msg    = f"Update failed: {e}"
+
+    def _poll_install(self):
+        """Poll until _do_download finishes, then show result and restart."""
+        if self._install_result is None:
+            QTimer.singleShot(200, self._poll_install)
+            return
+
+        if self._install_result:
+            self._append("ok",   self._install_msg)
+            self._append("ok",   "Restarting HRM Monitor…")
+            self._status_lbl.setText("Restarting…")
+            QTimer.singleShot(1800, self._do_restart)
+        else:
+            self._append("warn", self._install_msg)
+            self._append("info", "Continuing with current version…")
+            QTimer.singleShot(self._t_final, self._finalise)
+
+    def _do_restart(self):
+        """Replace the current process with a fresh one (picks up new files)."""
+        self._beat_timer.stop()
+        self._pulse.stop()
+        os.execv(sys.executable, [sys.executable] + sys.argv)
 
     # ── Final lines ───────────────────────────────────────────────
     def _finalise(self):

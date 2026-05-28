@@ -536,7 +536,7 @@ def mqtt_share_thread(room_code: str):
     6-character room code.
 
     Requires: pip install paho-mqtt
-    Broker:   broker.hivemq.com  (free, no account needed)
+    Broker:   broker.emqx.io  (free, no account needed)
     Topic:    hrm-monitor-v1/{room_code}/bpm
     """
     import uuid as _uuid
@@ -592,11 +592,18 @@ def mqtt_share_thread(room_code: str):
     client.loop_start()
 
     while True:
-        bpm = sig.get_bpm()
-        if bpm > 0 and _connected.is_set():
+        if _connected.is_set():
+            bpm = sig.get_bpm()
             try:
-                # retain=True so viewers get the latest BPM the instant they subscribe
-                client.publish(topic, json.dumps({"bpm": bpm}), qos=0, retain=True)
+                # Always publish so the viewer knows the host is alive.
+                # bpm=0 means Pulsoid not connected yet; viewer shows "--"
+                # retain=True delivers the last value instantly on subscribe.
+                client.publish(
+                    topic,
+                    json.dumps({"bpm": bpm, "alive": True}),
+                    qos=0,
+                    retain=True,
+                )
             except Exception as e:
                 print(f"[Share] publish error: {e}")
         time.sleep(0.5)

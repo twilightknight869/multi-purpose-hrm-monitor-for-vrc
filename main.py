@@ -10,14 +10,24 @@ from PyQt6.QtWidgets import QApplication, QMessageBox
 
 
 def _hide_console() -> None:
-    """Hide the Windows console window so only the UI is visible."""
+    """
+    Detach / hide the Windows console so no black window appears.
+    Works for both classic cmd and Windows Terminal.
+    """
+    if sys.platform != "win32":
+        return
     try:
         import ctypes
+        # First try: hide the console window (classic cmd / conhost)
         hwnd = ctypes.windll.kernel32.GetConsoleWindow()
         if hwnd:
-            ctypes.windll.user32.ShowWindow(hwnd, 0)   # SW_HIDE = 0
+            ctypes.windll.user32.ShowWindow(hwnd, 0)  # SW_HIDE
+        # Second: fully detach the console from this process so any
+        # remaining attached terminal (Windows Terminal, VS Code, etc.)
+        # stops receiving our stdout/stderr output.
+        ctypes.windll.kernel32.FreeConsole()
     except Exception:
-        pass   # non-Windows or no console — silently skip
+        pass
 
 
 def crash_log(exc: BaseException) -> None:

@@ -4,7 +4,7 @@
 import base64 as _b64
 
 # App version & update-check endpoint
-VERSION      = "1.1.2"
+VERSION      = "1.1.4"
 GITHUB_OWNER = "twilightknight869"                  # your GitHub username
 GITHUB_REPO  = "Multi-Purpose-HRM-Monitor-For-VRC" # your repository name
 
@@ -43,7 +43,7 @@ STEAMVR_POLL_SEC = 5
 # Friend HR sharing — MQTT relay (no port forwarding needed)
 # Both host and viewer connect to a free public MQTT broker.
 # The host generates a 6-char room code; the friend enters it.
-MQTT_BROKER       = "broker.hivemq.com"
+MQTT_BROKER       = "broker.emqx.io"   # more stable than hivemq free tier
 MQTT_PORT         = 1883
 MQTT_TOPIC_PREFIX = "hrm-monitor-v1"
 ROOM_CODE_LEN     = 6

@@ -438,8 +438,8 @@ class ViewerOverlay(QWidget):
             if rc == 0:
                 c.subscribe(topic, qos=0)
                 self._status_ready.emit(
-                    "● connected",
-                    "color: #00cc44; background: transparent;")
+                    "● waiting for host…",
+                    "color: #888800; background: transparent;")
             else:
                 self._status_ready.emit(
                     f"● broker refused (rc={rc})",
@@ -448,7 +448,17 @@ class ViewerOverlay(QWidget):
         def on_message(c, userdata, msg):
             try:
                 data = _json.loads(msg.payload.decode())
-                self._bpm_ready.emit(int(data["bpm"]))
+                bpm  = int(data.get("bpm", 0))
+                if bpm > 0:
+                    self._status_ready.emit(
+                        "● connected",
+                        "color: #00cc44; background: transparent;")
+                    self._bpm_ready.emit(bpm)
+                else:
+                    # Host alive but Pulsoid not connected yet
+                    self._status_ready.emit(
+                        "● host connected — waiting for sensor…",
+                        "color: #888800; background: transparent;")
             except Exception:
                 pass
 
