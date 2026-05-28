@@ -539,6 +539,7 @@ def mqtt_share_thread(room_code: str):
     Broker:   broker.hivemq.com  (free, no account needed)
     Topic:    hrm-monitor-v1/{room_code}/bpm
     """
+    import uuid as _uuid
     try:
         import paho.mqtt.client as mqtt
     except ImportError:
@@ -549,6 +550,23 @@ def mqtt_share_thread(room_code: str):
 
     topic      = f"{MQTT_TOPIC_PREFIX}/{room_code}/bpm"
     _connected = threading.Event()
+
+    # paho-mqtt 2.x changed the on_connect signature — use VERSION1 compat
+    # shim so both v1 and v2 work with the same callback style.
+    def _make_client():
+        try:
+            from paho.mqtt.enums import CallbackAPIVersion
+            return mqtt.Client(
+                CallbackAPIVersion.VERSION1,
+                client_id=f"hrm-host-{room_code}-{_uuid.uuid4().hex[:6]}",
+                clean_session=True,
+            )
+        except ImportError:
+            # paho-mqtt < 2.0
+            return mqtt.Client(
+                client_id=f"hrm-host-{room_code}-{_uuid.uuid4().hex[:6]}",
+                clean_session=True,
+            )
 
     def on_connect(c, userdata, flags, rc):
         if rc == 0:
@@ -561,12 +579,13 @@ def mqtt_share_thread(room_code: str):
         _connected.clear()
         print("[Share] MQTT disconnected — auto-reconnecting…")
 
-    client = mqtt.Client(client_id=f"hrm-host-{room_code}")
+    client = _make_client()
     client.on_connect    = on_connect
     client.on_disconnect = on_disconnect
+    client.reconnect_delay_set(min_delay=1, max_delay=10)
 
     try:
-        client.connect_async(MQTT_BROKER, MQTT_PORT, keepalive=60)
+        client.connect_async(MQTT_BROKER, MQTT_PORT, keepalive=30)
     except Exception as e:
         print(f"[Share] MQTT initial connect error: {e}"); return
 
@@ -576,7 +595,8 @@ def mqtt_share_thread(room_code: str):
         bpm = sig.get_bpm()
         if bpm > 0 and _connected.is_set():
             try:
-                client.publish(topic, json.dumps({"bpm": bpm}), qos=0, retain=False)
+                # retain=True so viewers get the latest BPM the instant they subscribe
+                client.publish(topic, json.dumps({"bpm": bpm}), qos=0, retain=True)
             except Exception as e:
                 print(f"[Share] publish error: {e}")
-        time.sleep(1)
+        time.sleep(0.5)

@@ -454,18 +454,33 @@ class ViewerOverlay(QWidget):
 
         def on_disconnect(c, userdata, rc):
             self._status_ready.emit(
-                "● disconnected — reconnecting…",
-                "color: #cc4400; background: transparent;")
+                "● reconnecting…",
+                "color: #888800; background: transparent;")
 
+        # paho-mqtt 2.x changed the Client API — use VERSION1 compat shim
+        # so both v1 and v2 work identically.
         client_id = f"hrm-viewer-{_uuid.uuid4().hex[:8]}"
-        self._mqtt_client = mqtt.Client(client_id=client_id)
+        try:
+            from paho.mqtt.enums import CallbackAPIVersion
+            self._mqtt_client = mqtt.Client(
+                CallbackAPIVersion.VERSION1,
+                client_id=client_id,
+                clean_session=True,
+            )
+        except ImportError:
+            # paho-mqtt < 2.0
+            self._mqtt_client = mqtt.Client(
+                client_id=client_id,
+                clean_session=True,
+            )
+
         self._mqtt_client.on_connect    = on_connect
         self._mqtt_client.on_message    = on_message
         self._mqtt_client.on_disconnect = on_disconnect
-        self._mqtt_client.reconnect_delay_set(min_delay=2, max_delay=30)
+        self._mqtt_client.reconnect_delay_set(min_delay=1, max_delay=15)
 
         try:
-            self._mqtt_client.connect(MQTT_BROKER, MQTT_PORT, keepalive=60)
+            self._mqtt_client.connect(MQTT_BROKER, MQTT_PORT, keepalive=30)
             self._mqtt_client.loop_forever()   # blocks; auto-reconnects on drop
         except Exception as e:
             self._status_ready.emit(
