@@ -1,6 +1,7 @@
 # ===========================================================
 #  HRM Monitor — Floating Overlay Windows
 # ===========================================================
+import random
 import threading
 import time
 
@@ -185,6 +186,13 @@ class Overlay(QWidget):
         self.mode_lbl.setStyleSheet("color: #3a3a4a; background: transparent;")
         right_col.addWidget(self.mode_lbl)
 
+        # Share status — only visible when sharing is enabled
+        self.share_lbl = QLabel("")
+        self.share_lbl.setFont(QFont("Consolas", int(8 * sc)))
+        self.share_lbl.setStyleSheet("color: #2a2a2a; background: transparent;")
+        self.share_lbl.setVisible(False)
+        right_col.addWidget(self.share_lbl)
+
         self.mode_btn = QPushButton("⇄ Force Desktop")
         self.mode_btn.setFont(QFont("Segoe UI", int(9 * sc)))
         self.mode_btn.setFixedHeight(24)
@@ -223,11 +231,25 @@ class Overlay(QWidget):
         self._last_bpm     = 0
         self._settings_window = None
 
+        self._share_room = cfg.get("room_code", "")
+        self._publish_count = 0
+
         sig.bus.bpm_signal.connect(self._on_bpm)
         sig.bus.status_signal.connect(self._on_status)
         sig.bus.mode_signal.connect(self._on_mode)
         sig.bus.spotify_signal.connect(self._on_spotify)
         sig.bus.friend_signal.connect(self._on_friend)
+
+        # If sharing is enabled, pulse the share label every second to confirm publishing
+        if cfg.get("share_enabled") and self._share_room:
+            self.share_lbl.setText(f"📡 sharing  •  room: {self._share_room}")
+            self.share_lbl.setStyleSheet("color: #336633; background: transparent;")
+            self.share_lbl.setVisible(True)
+            self._share_timer = QTimer(self)
+            self._share_timer.timeout.connect(self._tick_share)
+            self._share_timer.start(1000)
+        else:
+            self._share_timer = None
 
     # ---- Handlers ----
     def _on_bpm(self, bpm: int):
@@ -277,6 +299,13 @@ class Overlay(QWidget):
             self.spotify_lbl.setVisible(True)
         else:
             self.spotify_lbl.setVisible(False)
+
+    def _tick_share(self):
+        """Pulses the share label every second — confirms the MQTT thread is alive."""
+        self._publish_count += 1
+        dot = "●" if self._publish_count % 2 == 0 else "○"
+        self.share_lbl.setText(
+            f"{dot} sharing  •  room: {self._share_room}  •  {self._publish_count}s")
 
     def _on_friend(self, info: dict):
         """Show a toast when a friend connects or disconnects from the HR share stream."""
@@ -361,13 +390,15 @@ class Overlay(QWidget):
 #  Viewer Overlay  (friend's minimal readout)
 # ===========================================================
 class ViewerOverlay(QWidget):
-    _bpm_ready   = pyqtSignal(int)
+    _bpm_ready    = pyqtSignal(int)
     _status_ready = pyqtSignal(str, str)   # (text, css-color)
+    _broker_ready = pyqtSignal(str, str)   # broker line separate from data line
 
     def __init__(self, room_code: str):
         super().__init__()
-        self.room_code  = room_code.strip().upper()
+        self.room_code    = room_code.strip().upper()
         self._mqtt_client = None
+        self._received_any = False
 
         self.setWindowFlags(
             Qt.WindowType.FramelessWindowHint |
@@ -375,7 +406,7 @@ class ViewerOverlay(QWidget):
             Qt.WindowType.Tool
         )
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
-        self.resize(270, 140)
+        self.resize(300, 170)
 
         root = QVBoxLayout(self)
         root.setContentsMargins(12, 10, 12, 10)
@@ -400,7 +431,14 @@ class ViewerOverlay(QWidget):
         self.name_lbl.setStyleSheet("color: #555566; background: transparent;")
         info.addWidget(self.name_lbl)
 
-        self.conn_lbl = QLabel("● connecting…")
+        # Broker line — shows TCP connect state independently of data
+        self.broker_lbl = QLabel("● connecting to broker…")
+        self.broker_lbl.setFont(QFont("Consolas", 9))
+        self.broker_lbl.setStyleSheet("color: #555555; background: transparent;")
+        info.addWidget(self.broker_lbl)
+
+        # Data line — shows whether messages are arriving from the host
+        self.conn_lbl = QLabel("")
         self.conn_lbl.setFont(QFont("Consolas", 9))
         self.conn_lbl.setStyleSheet("color: #888800; background: transparent;")
         info.addWidget(self.conn_lbl)
@@ -408,6 +446,14 @@ class ViewerOverlay(QWidget):
         info.addStretch()
         top.addLayout(info)
         root.addLayout(top)
+
+        # Topic label — lets friend verify they're on the right channel
+        self._topic = f"{MQTT_TOPIC_PREFIX}/{self.room_code}/bpm"
+        topic_lbl = QLabel(f"topic: {self._topic}")
+        topic_lbl.setFont(QFont("Consolas", 7))
+        topic_lbl.setStyleSheet("color: #2a2a3a; background: transparent;")
+        topic_lbl.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
+        root.addWidget(topic_lbl)
 
         credit = QLabel("CRIMSON  •  crimsondreamz")
         credit.setFont(QFont("Segoe UI", 8))
@@ -418,12 +464,13 @@ class ViewerOverlay(QWidget):
 
         self._bpm_ready.connect(self._on_bpm)
         self._status_ready.connect(self._on_status)
+        self._broker_ready.connect(self._on_broker_status)
         self.old_pos = None
-        self._received_any = False   # flipped True on first message
-        self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)  # needed so keyPressEvent fires
+        self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
+
         threading.Thread(target=self._mqtt_thread, daemon=True).start()
 
-        # If no data arrives within 20 s, nudge the user to check their room code
+        # After 20 s with no data, tell the friend something is wrong
         self._timeout_timer = QTimer(self)
         self._timeout_timer.setSingleShot(True)
         self._timeout_timer.timeout.connect(self._on_connect_timeout)
@@ -439,16 +486,19 @@ class ViewerOverlay(QWidget):
                 "color: #cc4400; background: transparent;")
             return
 
-        topic = f"{MQTT_TOPIC_PREFIX}/{self.room_code}/bpm"
+        topic = self._topic
 
         def on_connect(c, userdata, flags, rc):
             if rc == 0:
-                c.subscribe(topic, qos=0)
+                c.subscribe(topic, qos=1)   # qos=1 ensures delivery acknowledgement
+                self._broker_ready.emit(
+                    "● broker connected",
+                    "color: #4488cc; background: transparent;")
                 self._status_ready.emit(
-                    "● waiting for host…",
+                    "● waiting for host data…",
                     "color: #888800; background: transparent;")
             else:
-                self._status_ready.emit(
+                self._broker_ready.emit(
                     f"● broker refused (rc={rc})",
                     "color: #cc4400; background: transparent;")
 
@@ -457,17 +507,15 @@ class ViewerOverlay(QWidget):
                 data = _json.loads(msg.payload.decode())
                 bpm  = int(data.get("bpm", 0))
                 self._received_any = True
-                if hasattr(self, '_timeout_timer'):
-                    self._timeout_timer.stop()
+                self._timeout_timer.stop()
                 if bpm > 0:
                     self._status_ready.emit(
-                        "● connected",
+                        "● receiving data",
                         "color: #00cc44; background: transparent;")
                     self._bpm_ready.emit(bpm)
                 else:
-                    # Host alive but Pulsoid not connected yet
                     self._status_ready.emit(
-                        "● host connected — waiting for sensor…",
+                        "● host online — sensor not connected",
                         "color: #888800; background: transparent;")
             except Exception as _e:
                 self._status_ready.emit(
@@ -475,12 +523,13 @@ class ViewerOverlay(QWidget):
                     "color: #cc4400; background: transparent;")
 
         def on_disconnect(c, userdata, rc):
-            self._status_ready.emit(
-                "● reconnecting…",
+            self._broker_ready.emit(
+                "● broker disconnected — reconnecting…",
                 "color: #888800; background: transparent;")
+            self._status_ready.emit(
+                "",
+                "color: #555555; background: transparent;")
 
-        # paho-mqtt 2.x changed the Client API — use VERSION1 compat shim
-        # so both v1 and v2 work identically.
         client_id = f"hrm-viewer-{_uuid.uuid4().hex[:8]}"
         try:
             from paho.mqtt.enums import CallbackAPIVersion
@@ -490,7 +539,6 @@ class ViewerOverlay(QWidget):
                 clean_session=True,
             )
         except ImportError:
-            # paho-mqtt < 2.0
             self._mqtt_client = mqtt.Client(
                 client_id=client_id,
                 clean_session=True,
@@ -503,25 +551,28 @@ class ViewerOverlay(QWidget):
 
         try:
             self._mqtt_client.connect(MQTT_BROKER, MQTT_PORT, keepalive=30)
-            self._mqtt_client.loop_forever()   # blocks; auto-reconnects on drop
+            self._mqtt_client.loop_forever()
         except Exception as e:
-            self._status_ready.emit(
-                f"● error: {e}",
+            self._broker_ready.emit(
+                f"● can't reach broker: {e}",
                 "color: #cc4400; background: transparent;")
 
     def _on_connect_timeout(self):
-        """Fires 20 s after launch if no MQTT message was ever received."""
+        """Fires 20 s after launch if no message ever arrived from the host."""
         if not self._received_any:
             self._on_status(
-                "● no data — check room code",
-                "color: #cc4400; background: transparent;",
-            )
+                "● no data from host — is sharing enabled?",
+                "color: #cc4400; background: transparent;")
 
     def _on_bpm(self, bpm: int):
         color = "#ff2222" if bpm >= BPM_HIGH else "#ffaa00" if bpm >= BPM_MED else "#00ff99"
         self.bpm_lbl.setText(f"{bpm} BPM")
         self.bpm_lbl.setStyleSheet(f"color: {color}; background: transparent;")
         self.heart_widget.set_bpm(bpm)
+
+    def _on_broker_status(self, text: str, style: str):
+        self.broker_lbl.setText(text)
+        self.broker_lbl.setStyleSheet(style)
 
     def _on_status(self, text: str, style: str):
         self.conn_lbl.setText(text)
