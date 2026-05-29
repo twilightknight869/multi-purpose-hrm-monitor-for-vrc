@@ -1,0 +1,78 @@
+<Window x:Class="HRMMonitor.Views.DevKeyWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Dev Key Activation" Width="400" SizeToContent="Height"
+        WindowStyle="None" AllowsTransparency="True" Background="Transparent"
+        WindowStartupLocation="CenterOwner" ResizeMode="NoResize" Topmost="True">
+
+    <Border CornerRadius="12" Background="#FF0f0f18"
+            BorderBrush="#FFe03535" BorderThickness="1" Padding="24,20">
+        <StackPanel>
+
+            <TextBlock Text="DEV KEY ACTIVATION" FontSize="13" FontWeight="Bold"
+                       Foreground="#FFe03535" HorizontalAlignment="Center"/>
+
+            <TextBlock x:Name="SlotLbl" FontFamily="Consolas" FontSize="11"
+                       Foreground="#FF888899" HorizontalAlignment="Center"
+                       Margin="0,6,0,0"/>
+
+            <!-- Status message -->
+            <Border x:Name="StatusBorder" Background="#FF0d0d1a" CornerRadius="6"
+                    Padding="10,7" Margin="0,14,0,0">
+                <TextBlock x:Name="StatusLbl" FontFamily="Consolas" FontSize="11"
+                           Foreground="#FFffaa33" TextWrapping="Wrap"
+                           HorizontalAlignment="Center"/>
+            </Border>
+
+            <!-- Password creation / entry -->
+            <TextBlock x:Name="PwLabel" Text="SET PASSWORD (one time only)"
+                       FontSize="11" FontWeight="SemiBold" Foreground="#FF888899"
+                       Margin="0,16,0,4"/>
+            <PasswordBox x:Name="PwBox" Height="32"/>
+
+            <!-- Confirm (only shown on first-time set) -->
+            <TextBlock x:Name="PwConfirmLabel" Text="CONFIRM PASSWORD"
+                       FontSize="11" FontWeight="SemiBold" Foreground="#FF888899"
+                       Margin="0,10,0,4" Visibility="Collapsed"/>
+            <PasswordBox x:Name="PwConfirmBox" Height="32" Visibility="Collapsed"/>
+
+            <!-- Username (slots 4-6 only) -->
+            <TextBlock x:Name="UnameLabel" Text="SET DISPLAY NAME"
+                       FontSize="11" FontWeight="SemiBold" Foreground="#FF888899"
+                       Margin="0,10,0,4" Visibility="Collapsed"/>
+            <TextBox x:Name="UnameBox" Height="28" Visibility="Collapsed"
+                     FontFamily="Consolas" MaxLength="32"/>
+            <TextBlock x:Name="UnameHint" FontSize="10" Foreground="#FF444455"
+                       Margin="0,3,0,0" Visibility="Collapsed"
+                       Text="Shown in the VRC overlay. You can change this later."/>
+
+            <!-- HWID section (keys 4-6 first use) -->
+            <Border x:Name="HwidSection" Visibility="Collapsed"
+                    Background="#FF0d0d1a" CornerRadius="6" Padding="10,8" Margin="0,14,0,0">
+                <StackPanel>
+                    <TextBlock Text="HWID LOCK — FIRST USE" FontSize="11" FontWeight="SemiBold"
+                               Foreground="#FFffaa33" Margin="0,0,0,4"/>
+                    <TextBlock x:Name="HwidLbl" FontFamily="Consolas" FontSize="10"
+                               Foreground="#FF555566" TextWrapping="Wrap"/>
+                    <TextBlock Text="This key will be permanently locked to this machine."
+                               FontSize="10" Foreground="#FF444455" Margin="0,4,0,0"
+                               TextWrapping="Wrap"/>
+                </StackPanel>
+            </Border>
+
+            <!-- Buttons -->
+            <Grid Margin="0,16,0,0">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="8"/>
+                    <ColumnDefinition Width="*"/>
+                </Grid.ColumnDefinitions>
+                <Button Grid.Column="0" x:Name="ConfirmBtn" Content="Activate"
+                        Click="ConfirmBtn_Click"/>
+                <Button Grid.Column="2" Content="Cancel" Foreground="#FF555566"
+                        Click="CancelBtn_Click"/>
+            </Grid>
+
+        </StackPanel>
+    </Border>
+</Window>

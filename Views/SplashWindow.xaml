@@ -1,0 +1,51 @@
+<Window x:Class="HRMMonitor.Views.SplashWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="HRM Monitor" Height="360" Width="480"
+        WindowStyle="None" AllowsTransparency="True" Background="Transparent"
+        WindowStartupLocation="CenterScreen" Topmost="True"
+        ResizeMode="NoResize">
+
+    <Border CornerRadius="12" Background="#FF0f0f18"
+            BorderBrush="#FF2e2e48" BorderThickness="1">
+        <Grid>
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="*"/>
+                <RowDefinition Height="Auto"/>
+            </Grid.RowDefinitions>
+
+            <!-- Header -->
+            <StackPanel Grid.Row="0" Margin="0,28,0,16" HorizontalAlignment="Center">
+                <TextBlock x:Name="HeartLbl" Text="♥" FontSize="36" FontFamily="Segoe UI Emoji"
+                           HorizontalAlignment="Center" Foreground="#FFcc0000"/>
+                <TextBlock Text="HRM MONITOR" FontSize="17" FontWeight="Bold"
+                           FontFamily="Segoe UI" Foreground="#FFe03535"
+                           HorizontalAlignment="Center" Margin="0,6,0,0"/>
+                <TextBlock x:Name="VersionLbl" Text="v2.0.0  ·  starting up"
+                           FontSize="11" FontFamily="Consolas"
+                           HorizontalAlignment="Center" Foreground="#FF444455" Margin="0,4,0,0"/>
+            </StackPanel>
+
+            <!-- Log area -->
+            <ScrollViewer Grid.Row="1" x:Name="LogScroll"
+                          VerticalScrollBarVisibility="Auto"
+                          HorizontalScrollBarVisibility="Disabled"
+                          Margin="24,0,24,0">
+                <StackPanel x:Name="LogPanel" VerticalAlignment="Bottom"/>
+            </ScrollViewer>
+
+            <!-- Progress bar + status -->
+            <StackPanel Grid.Row="2" Margin="0,12,0,20">
+                <!-- Animated accent bar -->
+                <Canvas Height="3" Margin="0,0,0,8">
+                    <Rectangle x:Name="ProgressBar" Height="3" RadiusX="2" RadiusY="2"
+                               Fill="#FFe03535" Width="80" Canvas.Left="-80"/>
+                </Canvas>
+                <TextBlock x:Name="StatusLbl" Text="Initializing…"
+                           FontFamily="Consolas" FontSize="10"
+                           HorizontalAlignment="Center" Foreground="#FF444455"/>
+            </StackPanel>
+        </Grid>
+    </Border>
+</Window>

@@ -1,0 +1,45 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <AssemblyName>HRMMonitor</AssemblyName>
+    <RootNamespace>HRMMonitor</RootNamespace>
+    <ApplicationIcon>Resources\icon.ico</ApplicationIcon>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Version>2.0.0</Version>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Pulsoid WebSocket -->
+    <PackageReference Include="Websocket.Client" Version="5.1.1" />
+    <!-- OSC is implemented directly via UDP — no package needed -->
+    <!-- JSON -->
+    <PackageReference Include="Newtonsoft.Json" Version="13.0.3" />
+    <!-- System tray -->
+    <PackageReference Include="Hardcodet.NotifyIcon.Wpf" Version="2.0.1" />
+    <!-- MVVM helpers -->
+    <PackageReference Include="CommunityToolkit.Mvvm" Version="8.3.2" />
+    <!-- Spotify -->
+    <PackageReference Include="SpotifyAPI.Web" Version="7.2.0" />
+    <!-- GDI+ for SteamVR overlay texture rendering -->
+    <PackageReference Include="System.Drawing.Common" Version="8.0.0" />
+  </ItemGroup>
+
+  <!-- openvr_api.cs is downloaded by build.bat from the ValveSoftware/openvr GitHub repo.
+       The SDK auto-includes it; this just enables the OPENVR symbol when the file is present.
+       Suppress nullable warnings from Valve's generated file — they can't be fixed here. -->
+  <PropertyGroup Condition="Exists('openvr_api.cs')">
+    <DefineConstants>$(DefineConstants);OPENVR</DefineConstants>
+    <NoWarn>$(NoWarn);8600;8602;8603;8605;8618;8625</NoWarn>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Resource Include="Resources\icon.ico" />
+    <Resource Include="Resources\heart.png" Condition="Exists('Resources\heart.png')" />
+  </ItemGroup>
+
+</Project>

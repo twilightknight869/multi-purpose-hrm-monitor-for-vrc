@@ -1,0 +1,20 @@
+# Build output
+bin/
+obj/
+dist/
+
+# OpenVR binding (downloaded by build.bat — not committed)
+openvr_api.cs
+
+# Discord bot
+discord-bot/node_modules/
+discord-bot/licenses.db
+discord-bot/.env
+
+# User secrets / dev state
+*.user
+.vs/
+
+# OS
+Thumbs.db
+desktop.ini
