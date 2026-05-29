@@ -14,8 +14,8 @@ public class LicenseService : IDisposable
 {
     // ── Licensing config ──────────────────────────────────────────
     // Set these to your Railway/Render URL and the API_SECRET from your bot's .env
-    public const string ApiUrl    = "https://your-bot.railway.app";   // <-- update after deploy
-    public const string ApiSecret = "change-this-to-something-long-and-random-123456";
+    public const string ApiUrl    = "https://multi-purpose-hrm-monitor-for-vrc-production.up.railway.app";
+    public const string ApiSecret = "hrmMonitorSecretKey2025xYzAbc123";
 
     // Free tier: 6 hours per day (tracked in registry as seconds used today)
     private const int FreeDailyLimitSeconds = 6 * 60 * 60;
