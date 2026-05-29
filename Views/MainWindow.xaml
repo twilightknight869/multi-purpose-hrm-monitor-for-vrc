@@ -91,7 +91,7 @@
                                 <TextBox x:Name="ChatboxTemplate" Height="30"
                                          TextChanged="ChatboxTemplate_Changed"/>
                                 <TextBlock Style="{StaticResource HintText}"
-                                           Text="{}{bpm} {bar} {tier} {icon} {pronoun}   (Spotify: add {track} and/or {artist})"/>
+                                           Text="{}{icon} {bpm} BPM [{bar}]  |  tokens: {tier} {pronoun} {track} {artist}"/>
 
                                 <TextBlock Text="PREVIEW" Style="{StaticResource SectionHeader}"/>
                                 <Border Background="#FF0d0d1a" CornerRadius="6" Padding="10,7">
@@ -294,11 +294,25 @@
                                 <TextBlock Text="LABEL" Style="{StaticResource SectionHeader}"/>
                                 <ComboBox x:Name="PronounBox" Height="28"
                                           SelectionChanged="Pronoun_Changed">
+                                    <!-- Standard pronouns -->
                                     <ComboBoxItem Content="My"/>
                                     <ComboBoxItem Content="His"/>
                                     <ComboBoxItem Content="Her"/>
                                     <ComboBoxItem Content="Their"/>
+                                    <ComboBoxItem Content="Our"/>
+                                    <!-- Neopronouns -->
+                                    <ComboBoxItem Content="Xe/Xem"/>
+                                    <ComboBoxItem Content="Ze/Hir"/>
+                                    <ComboBoxItem Content="Ey/Em"/>
+                                    <ComboBoxItem Content="Ve/Ver"/>
+                                    <ComboBoxItem Content="Per/Per"/>
+                                    <ComboBoxItem Content="It/Its"/>
+                                    <ComboBoxItem Content="Fae/Faer"/>
+                                    <ComboBoxItem Content="Ae/Aer"/>
+                                    <ComboBoxItem Content="One's"/>
                                 </ComboBox>
+                                <TextBlock Style="{StaticResource HintText}"
+                                           Text="Use {pronoun} in your chatbox template"/>
                             </StackPanel>
                         </GroupBox>
 
@@ -319,6 +333,73 @@
                                 <CheckBox x:Name="ShakeCheck" Content="Screen shake on high BPM"
                                           Margin="0,10,0,0"
                                           Checked="ShakeCheck_Changed" Unchecked="ShakeCheck_Changed"/>
+                                <CheckBox x:Name="SoundCheck" Content="Heartbeat sound effect"
+                                          Margin="0,6,0,0"
+                                          Checked="SoundCheck_Changed" Unchecked="SoundCheck_Changed"/>
+                            </StackPanel>
+                        </GroupBox>
+
+                        <!-- Live status panel (like Python version) -->
+                        <GroupBox Header="Status">
+                            <StackPanel>
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="*"/>
+                                    </Grid.ColumnDefinitions>
+                                    <StackPanel Grid.Column="0">
+                                        <!-- Pulsoid -->
+                                        <StackPanel Orientation="Horizontal" Margin="0,4,0,0">
+                                            <Ellipse x:Name="StatusPulsoidDot" Width="8" Height="8" Fill="#FF333344"
+                                                     VerticalAlignment="Center" Margin="0,0,6,0"/>
+                                            <TextBlock x:Name="StatusPulsoidLbl" Text="Pulsoid: disconnected"
+                                                       FontFamily="Consolas" FontSize="11" Foreground="#FF555566"
+                                                       VerticalAlignment="Center"/>
+                                        </StackPanel>
+                                        <!-- OSC -->
+                                        <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
+                                            <Ellipse x:Name="StatusOscDot" Width="8" Height="8" Fill="#FF333344"
+                                                     VerticalAlignment="Center" Margin="0,0,6,0"/>
+                                            <TextBlock x:Name="StatusOscLbl" Text="OSC: off"
+                                                       FontFamily="Consolas" FontSize="11" Foreground="#FF555566"
+                                                       VerticalAlignment="Center"/>
+                                        </StackPanel>
+                                        <!-- Chatbox -->
+                                        <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
+                                            <Ellipse x:Name="StatusChatboxDot" Width="8" Height="8" Fill="#FF333344"
+                                                     VerticalAlignment="Center" Margin="0,0,6,0"/>
+                                            <TextBlock x:Name="StatusChatboxLbl" Text="Chatbox: off"
+                                                       FontFamily="Consolas" FontSize="11" Foreground="#FF555566"
+                                                       VerticalAlignment="Center"/>
+                                        </StackPanel>
+                                    </StackPanel>
+                                    <StackPanel Grid.Column="1">
+                                        <!-- Sharing -->
+                                        <StackPanel Orientation="Horizontal" Margin="0,4,0,0">
+                                            <Ellipse x:Name="StatusSharingDot" Width="8" Height="8" Fill="#FF333344"
+                                                     VerticalAlignment="Center" Margin="0,0,6,0"/>
+                                            <TextBlock x:Name="StatusSharingLbl" Text="Sharing: off"
+                                                       FontFamily="Consolas" FontSize="11" Foreground="#FF555566"
+                                                       VerticalAlignment="Center"/>
+                                        </StackPanel>
+                                        <!-- Spotify -->
+                                        <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
+                                            <Ellipse x:Name="StatusSpotifyDot" Width="8" Height="8" Fill="#FF333344"
+                                                     VerticalAlignment="Center" Margin="0,0,6,0"/>
+                                            <TextBlock x:Name="StatusSpotifyLbl" Text="Spotify: off"
+                                                       FontFamily="Consolas" FontSize="11" Foreground="#FF555566"
+                                                       VerticalAlignment="Center"/>
+                                        </StackPanel>
+                                        <!-- License -->
+                                        <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
+                                            <Ellipse x:Name="StatusLicenseDot" Width="8" Height="8" Fill="#FF333344"
+                                                     VerticalAlignment="Center" Margin="0,0,6,0"/>
+                                            <TextBlock x:Name="StatusLicenseLbl" Text="License: free"
+                                                       FontFamily="Consolas" FontSize="11" Foreground="#FF555566"
+                                                       VerticalAlignment="Center"/>
+                                        </StackPanel>
+                                    </StackPanel>
+                                </Grid>
                             </StackPanel>
                         </GroupBox>
 

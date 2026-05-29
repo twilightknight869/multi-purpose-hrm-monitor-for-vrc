@@ -60,7 +60,7 @@ public class AppSettings
     }
     public string ChatboxTemplate
     {
-        get => Get("ChatboxTemplate", "{icon} {bpm} BPM [{bar}]");
+        get => Get("ChatboxTemplate", "{icon} {bpm} BPM  ( {tier} )\n[{bar}]");
         set => Set("ChatboxTemplate", value);
     }
     public bool ChatboxSpotify
@@ -79,6 +79,11 @@ public class AppSettings
     {
         get => GetBool("ShakeEnabled", true);
         set => Set("ShakeEnabled", value);
+    }
+    public bool HeartbeatSoundEnabled
+    {
+        get => GetBool("HeartbeatSound", true);
+        set => Set("HeartbeatSound", value);
     }
 
     // ── Sharing (host) ────────────────────────────────────────────
@@ -134,6 +139,23 @@ public class AppSettings
     {
         get => Get("SpotifyRedirectUri", "http://127.0.0.1:8888/callback");
         set => Set("SpotifyRedirectUri", value);
+    }
+
+    // ── Spotify OAuth tokens (persisted so re-auth isn't needed after updates) ──
+    public string SpotifyAccessToken
+    {
+        get => Get("SpotifyAccessToken", "");
+        set => Set("SpotifyAccessToken", value);
+    }
+    public string SpotifyRefreshToken
+    {
+        get => Get("SpotifyRefreshToken", "");
+        set => Set("SpotifyRefreshToken", value);
+    }
+    public long SpotifyTokenExpiry
+    {
+        get => GetInt("SpotifyTokenExpiry", 0);
+        set => _key.SetValue("SpotifyTokenExpiry", value.ToString());
     }
 
     // ── SteamVR ───────────────────────────────────────────────────

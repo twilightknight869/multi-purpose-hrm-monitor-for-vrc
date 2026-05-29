@@ -7,6 +7,12 @@ using HRMMonitor.Services;
 
 namespace HRMMonitor.Views;
 
+internal static class StringExt
+{
+    public static string Truncate(this string s, int max) =>
+        s.Length <= max ? s : s[..max] + "…";
+}
+
 public partial class MainWindow : Window
 {
     // ── Services ──────────────────────────────────────────────────
@@ -41,10 +47,11 @@ public partial class MainWindow : Window
     private static void MigrateSettings()
     {
         var t = AppSettings.Instance.ChatboxTemplate;
-        // If old template had track/artist inline (no \n), reset to clean default
-        if (t.Contains("{track}") || t.Contains("{artist}"))
+        // Reset old plain templates to the new pretty default
+        if (t == "{icon} {bpm} BPM [{bar}]" || t == "{icon} {bpm} BPM  [{bar}]" ||
+            (t.Contains("{track}") && !t.Contains("\n")))
         {
-            AppSettings.Instance.ChatboxTemplate = "{icon} {bpm} BPM [{bar}]{track}";
+            AppSettings.Instance.ChatboxTemplate = "{icon} {bpm} BPM  ( {tier} )\n[{bar}]{track}";
         }
     }
 
@@ -85,6 +92,7 @@ public partial class MainWindow : Window
         OpacitySlider.Value = s.OverlayOpacity;
         OpacityLbl.Text     = $"{s.OverlayOpacity:P0}";
         ShakeCheck.IsChecked = s.ShakeEnabled;
+        SoundCheck.IsChecked = s.HeartbeatSoundEnabled;
 
         // License
         LicenseKeyBox.Text     = s.LicenseKey;
@@ -107,17 +115,31 @@ public partial class MainWindow : Window
     // ── Wire service events ───────────────────────────────────────
     private void WireServices()
     {
-        // Pulsoid → connection dot + BPM distribution
-        _pulsoid.StatusChanged += status => Dispatcher.Invoke(() => UpdateConnStatus(status));
-        _pulsoid.BpmReceived   += bpm    => Dispatcher.Invoke(() => OnBpmReceived(bpm));
+        // Pulsoid → connection dot + BPM distribution + status panel
+        _pulsoid.StatusChanged += status => Dispatcher.Invoke(() =>
+        {
+            UpdateConnStatus(status);
+            SetStatus(StatusPulsoidDot, StatusPulsoidLbl,
+                status == "connected" ? "green" : status == "connecting" || status == "reconnecting" ? "orange" : "dim",
+                $"Pulsoid: {status}");
+        });
+        _pulsoid.BpmReceived += bpm => Dispatcher.Invoke(() => OnBpmReceived(bpm));
 
-        // Spotify → chatbox preview + overlay
+        // Spotify → chatbox preview + overlay + status panel
+        _spotify.StatusChanged += status => Dispatcher.BeginInvoke(() =>
+        {
+            SetStatus(StatusSpotifyDot, StatusSpotifyLbl,
+                status == "connected" ? "blue" : status == "authorizing" ? "orange" : "dim",
+                $"Spotify: {status}");
+        });
         _spotify.TrackChanged += info => Dispatcher.Invoke(() =>
         {
             _lastTrack  = info?.TrackName  ?? "";
             _lastArtist = info?.ArtistName ?? "";
             UpdatePreview();
             _overlay?.SetTrack(_lastTrack, _lastArtist);
+            if (info != null && info.IsPlaying)
+                SetStatus(StatusSpotifyDot, StatusSpotifyLbl, "blue", $"Spotify: {_lastTrack}".Truncate(24));
         });
 
         // SteamVR mode changes
@@ -130,7 +152,7 @@ public partial class MainWindow : Window
         _updater.UpdateAvailable += url => Dispatcher.Invoke(() => ShowUpdateAlert(url));
 
         // License — use BeginInvoke so sync code paths don't deadlock the UI thread
-        _license.StatusChanged           += s   => Dispatcher.BeginInvoke(() => UpdateLicenseBadge(s));
+        _license.StatusChanged           += s   => Dispatcher.BeginInvoke(() => { UpdateLicenseBadge(s); UpdateStatusPanel(); });
         _license.SecondsRemainingChanged += sec => Dispatcher.BeginInvoke(() => UpdateFreeTimer(sec));
     }
 
@@ -181,17 +203,19 @@ public partial class MainWindow : Window
         int high = s.BpmHigh;
         int med  = s.BpmMed;
 
-        string tier = bpm >= high ? "HIGH" : bpm >= med ? "MED" : "LOW";
-        // VRChat chatbox uses a limited font — use ASCII-safe chars instead of emoji/block chars
-        // VRChat chatbox only supports basic ASCII — no Unicode symbols
-        string icon = bpm >= high ? "!!!" : bpm >= med ? "<3" : "~";
-        int    bar  = bpm > 0 ? Math.Clamp((int)Math.Round(bpm / 200.0 * 10), 0, 10) : 0;
-        string barStr = new string('|', bar) + new string('-', 10 - bar);
+        // Tier + icon — ASCII only (VRChat chatbox has limited font)
+        string tier, icon;
+        if (bpm >= high)      { tier = "HIGH";  icon = "<!>"; }
+        else if (bpm >= med)  { tier = "MED";   icon = "<3~"; }
+        else                  { tier = "LOW";   icon = "<3";  }
 
-        // {track} and {artist} always start on their own line to avoid
-        // running into the BPM line in VRChat's chatbox display.
-        var trackVal  = string.IsNullOrEmpty(_lastTrack)  ? "" : $"\n* {_lastTrack}";
-        var artistVal = string.IsNullOrEmpty(_lastArtist) ? "" : $"\n  {_lastArtist}";
+        // Prettier progress bar — 12 wide with filled/empty chars
+        int filled  = bpm > 0 ? Math.Clamp((int)Math.Round(bpm / 220.0 * 12), 0, 12) : 0;
+        string barStr = new string('=', filled) + new string('-', 12 - filled);
+
+        // Track/artist on their own lines with clean prefix
+        string trackVal  = string.IsNullOrEmpty(_lastTrack)  ? "" : $"\n>> {_lastTrack}".Truncate(36);
+        string artistVal = string.IsNullOrEmpty(_lastArtist) ? "" : $"\n   {_lastArtist}".Truncate(36);
 
         return s.ChatboxTemplate
             .Replace("{bpm}",     bpm > 0 ? bpm.ToString() : "--")
@@ -202,6 +226,33 @@ public partial class MainWindow : Window
             .Replace("{artist}",  artistVal)
             .Replace("{pronoun}", s.Pronoun)
             .TrimEnd();
+    }
+
+    // ── Generic status dot + label helper ────────────────────────
+    private void SetStatus(System.Windows.Shapes.Ellipse dot, TextBlock lbl, string color, string text)
+    {
+        var fill = color switch
+        {
+            "green"  => "#FF44cc77",
+            "orange" => "#FFffaa33",
+            "red"    => "#FFff4444",
+            "blue"   => "#FF4488cc",
+            _        => "#FF333344",
+        };
+        dot.Fill = (Brush)new BrushConverter().ConvertFrom(fill)!;
+        lbl.Text = text;
+        lbl.Foreground = (Brush)new BrushConverter().ConvertFrom(fill)!;
+    }
+
+    private void UpdateStatusPanel()
+    {
+        var s = AppSettings.Instance;
+        SetStatus(StatusOscDot,     StatusOscLbl,     _running && s.OscEnabled     ? "blue" : "dim", _running && s.OscEnabled ? "OSC: active"   : "OSC: off");
+        SetStatus(StatusChatboxDot, StatusChatboxLbl, _running && s.ChatboxEnabled ? "blue" : "dim", _running && s.ChatboxEnabled ? "Chatbox: on" : "Chatbox: off");
+        SetStatus(StatusSharingDot, StatusSharingLbl, _running && s.SharingEnabled ? "green": "dim", _running && s.SharingEnabled ? "Sharing: on" : "Sharing: off");
+        SetStatus(StatusLicenseDot, StatusLicenseLbl,
+            _license.IsPremium ? "green" : "blue",
+            _license.IsPremium ? (_license.ActiveDevSlot > 0 ? $"Dev: {DevKeyManager.GetUsername(_license.ActiveDevSlot)}" : "Premium") : "Free tier");
     }
 
     // ── Connection status dot ─────────────────────────────────────
@@ -369,6 +420,7 @@ public partial class MainWindow : Window
 
         _running = true;
         StartBtn.Content = "■   STOP OVERLAY";
+        UpdateStatusPanel();
 
         // Start services
         _osc.UpdateTarget(s.OscIp, s.OscPort);
@@ -378,12 +430,24 @@ public partial class MainWindow : Window
             _steamvr.Start();
 
         if (s.SpotifyEnabled)
-            _ = _spotify.StartAsync(s.SpotifyClientId, s.SpotifyClientSecret, s.SpotifyRedirectUri);
+        {
+            // Try restoring saved token first — only do full auth if that fails
+            _ = Task.Run(async () =>
+            {
+                var restored = await _spotify.TryRestoreAsync(s.SpotifyClientId, s.SpotifyClientSecret);
+                if (!restored)
+                    await _spotify.AuthorizeAsync(s.SpotifyClientId, s.SpotifyClientSecret, s.SpotifyRedirectUri);
+                _spotify.StartPolling();
+            });
+        }
 
         // Open overlay
         _overlay = new OverlayWindow();
         _overlay.Opacity = s.OverlayOpacity;
         _overlay.Show();
+
+        // Apply sound setting
+        _overlay.SetSoundEnabled(s.HeartbeatSoundEnabled);
 
         // Show dev badge if a dev key is active
         if (_license.IsPremium && _license.ActiveDevSlot > 0)
@@ -404,6 +468,7 @@ public partial class MainWindow : Window
     {
         _running = false;
         StartBtn.Content = "▶   START OVERLAY";
+        UpdateStatusPanel();
 
         _pulsoid.Stop();
         _steamvr.Stop();
@@ -462,7 +527,9 @@ public partial class MainWindow : Window
         if (_suppressChanges) return;
         if (PronounBox.SelectedItem is System.Windows.Controls.ComboBoxItem item)
         {
-            AppSettings.Instance.Pronoun = item.Content.ToString() ?? "My";
+            var val = item.Content.ToString() ?? "My";
+            // For neopronouns like "Xe/Xem", store the full string but use first part in chatbox
+            AppSettings.Instance.Pronoun = val;
             UpdatePreview();
         }
     }
@@ -604,6 +671,15 @@ public partial class MainWindow : Window
     {
         if (_suppressChanges) return;
         AppSettings.Instance.ShakeEnabled = ShakeCheck.IsChecked == true;
+    }
+
+    private void SoundCheck_Changed(object sender, RoutedEventArgs e)
+    {
+        if (_suppressChanges) return;
+        var on = SoundCheck.IsChecked == true;
+        AppSettings.Instance.HeartbeatSoundEnabled = on;
+        // Apply live to running overlay
+        _overlay?.SetSoundEnabled(on);
     }
 
     // ══════════════════════════════════════════════════════════════

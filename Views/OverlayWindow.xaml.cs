@@ -6,6 +6,7 @@ using System.Windows.Media.Animation;
 using System.Windows.Shapes;
 using System.Windows.Threading;
 using HRMMonitor.Models;
+using HRMMonitor.Services;
 
 namespace HRMMonitor.Views;
 
@@ -21,8 +22,11 @@ public partial class OverlayWindow : Window
     private readonly DispatcherTimer _heartTimer = new() { Interval = TimeSpan.FromMilliseconds(500) };
     private bool _heartBig;
 
+    // ── Heartbeat sound ───────────────────────────────────────────
+    private readonly HeartbeatPlayer _heartbeat = new();
+
     // ── Shake ─────────────────────────────────────────────────────
-    private readonly DispatcherTimer _shakeTimer = new() { Interval = TimeSpan.FromMilliseconds(50) };
+    private readonly DispatcherTimer _shakeTimer = new() { Interval = TimeSpan.FromMilliseconds(40) };
     private int    _shakeSteps;
     private double _shakeOrigLeft, _shakeOrigTop;
     private readonly Random _rng = new();
@@ -66,10 +70,13 @@ public partial class OverlayWindow : Window
         TierLbl.Text = tier;
         TierLbl.Foreground = (Brush)new BrushConverter().ConvertFrom(color)!;
 
-        // Heart beat speed
+        // Heart beat speed — scales with actual BPM
         _heartTimer.Interval = bpm > 0
-            ? TimeSpan.FromMilliseconds(Math.Max(200, 30000 / bpm))
+            ? TimeSpan.FromMilliseconds(Math.Max(150, 60000 / bpm / 2))
             : TimeSpan.FromMilliseconds(500);
+
+        // Heartbeat sound — matches heart animation speed
+        _heartbeat.SetBpm(bpm);
 
         // Shake on high BPM
         if (s.ShakeEnabled && bpm >= s.BpmHigh && !_shakeTimer.IsEnabled)
@@ -93,6 +100,8 @@ public partial class OverlayWindow : Window
             DevBadge.Visibility = Visibility.Visible;
         }
     }
+
+    public void SetSoundEnabled(bool on) => _heartbeat.Enabled = on;
 
     public void SetTrack(string track, string artist)
     {
@@ -215,6 +224,15 @@ public partial class OverlayWindow : Window
         RootBorder.BorderBrush = Topmost
             ? new SolidColorBrush(Color.FromRgb(0x2e, 0x2e, 0x48))
             : new SolidColorBrush(Color.FromRgb(0xff, 0xaa, 0x33));
+    }
+
+    // ── Cleanup ───────────────────────────────────────────────────
+    protected override void OnClosed(EventArgs e)
+    {
+        _heartTimer.Stop();
+        _shakeTimer.Stop();
+        _heartbeat.Dispose();
+        base.OnClosed(e);
     }
 
     // ── Drag ─────────────────────────────────────────────────────

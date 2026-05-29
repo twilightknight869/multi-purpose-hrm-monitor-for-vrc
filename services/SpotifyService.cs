@@ -2,6 +2,7 @@ using System.Diagnostics;
 using System.IO;
 using System.Net;
 using System.Text;
+using HRMMonitor.Models;
 using SpotifyAPI.Web;
 
 namespace HRMMonitor.Services;
@@ -10,8 +11,7 @@ public record TrackInfo(string TrackName, string ArtistName, bool IsPlaying);
 
 /// <summary>
 /// Polls Spotify every 3 s for the currently playing track.
-/// Uses a lightweight HttpListener for the OAuth callback — no EmbedIO needed.
-/// Fires TrackChanged when the track or playback state changes.
+/// Tokens are persisted in the registry so re-auth survives app updates.
 /// </summary>
 public class SpotifyService : IDisposable
 {
@@ -90,11 +90,51 @@ public class SpotifyService : IDisposable
             var tokenReq = new AuthorizationCodeTokenRequest(clientId, clientSecret, authCode, uri);
             var token    = await new OAuthClient(config).RequestToken(tokenReq);
             _spotify     = new SpotifyClient(token.AccessToken);
+
+            // Persist tokens so re-auth isn't needed after updates
+            AppSettings.Instance.SpotifyAccessToken  = token.AccessToken;
+            AppSettings.Instance.SpotifyRefreshToken = token.RefreshToken ?? "";
+            AppSettings.Instance.SpotifyTokenExpiry  = DateTimeOffset.UtcNow.AddSeconds(token.ExpiresIn).ToUnixTimeSeconds();
+
             StatusChanged?.Invoke("connected");
         }
         catch (Exception ex)
         {
             StatusChanged?.Invoke($"error:{ex.Message}");
+        }
+    }
+
+    // ── Restore saved token (call on startup before polling) ──────
+    public async Task<bool> TryRestoreAsync(string clientId, string clientSecret)
+    {
+        var s = AppSettings.Instance;
+        if (string.IsNullOrEmpty(s.SpotifyAccessToken)) return false;
+
+        try
+        {
+            // If token is expired, refresh it
+            if (DateTimeOffset.UtcNow.ToUnixTimeSeconds() >= s.SpotifyTokenExpiry - 60
+                && !string.IsNullOrEmpty(s.SpotifyRefreshToken))
+            {
+                var config      = SpotifyClientConfig.CreateDefault();
+                var refreshReq  = new AuthorizationCodeRefreshRequest(clientId, clientSecret, s.SpotifyRefreshToken);
+                var refreshed   = await new OAuthClient(config).RequestToken(refreshReq);
+                s.SpotifyAccessToken = refreshed.AccessToken;
+                s.SpotifyTokenExpiry = DateTimeOffset.UtcNow.AddSeconds(refreshed.ExpiresIn).ToUnixTimeSeconds();
+                if (!string.IsNullOrEmpty(refreshed.RefreshToken))
+                    s.SpotifyRefreshToken = refreshed.RefreshToken;
+            }
+
+            _spotify = new SpotifyClient(s.SpotifyAccessToken);
+            StatusChanged?.Invoke("connected");
+            return true;
+        }
+        catch
+        {
+            // Token invalid — clear it so next StartAsync triggers full re-auth
+            s.SpotifyAccessToken  = "";
+            s.SpotifyRefreshToken = "";
+            return false;
         }
     }
 
