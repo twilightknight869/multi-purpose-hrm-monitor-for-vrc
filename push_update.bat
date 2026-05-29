@@ -10,7 +10,7 @@ echo.
 cd /d "%~dp0"
 
 :: ── Read version from csproj ─────────────────────────────────────
-for /f "tokens=2 delims=><" %%v in ('findstr /i "<Version>" HRMMonitor.csproj') do set VERSION=%%v
+for /f "tokens=3 delims=><" %%v in ('findstr /i "<Version>" HRMMonitor.csproj') do set VERSION=%%v
 echo  Version: v%VERSION%
 echo.
 
@@ -141,12 +141,7 @@ echo  Creating GitHub release v%VERSION%...
 gh release delete v%VERSION% --yes >nul 2>&1
 git push origin :refs/tags/v%VERSION% >nul 2>&1
 
-gh release create v%VERSION% ^
-    "dist\HRMMonitor.exe#HRMMonitor.exe" ^
-    --repo twilightknight869/Multi-Purpose-HRM-Monitor-For-VRC ^
-    --title "HRM Monitor v%VERSION%" ^
-    --notes "%NOTES%" ^
-    --target v2
+gh release create v%VERSION% "dist\HRMMonitor.exe#HRMMonitor.exe" --repo twilightknight869/Multi-Purpose-HRM-Monitor-For-VRC --title "HRM Monitor v%VERSION%" --notes "%NOTES%" --target v2
 
 if errorlevel 1 (
     echo  [!] Release creation failed. Check GitHub CLI auth: gh auth login
