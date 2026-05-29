@@ -8,7 +8,7 @@ openvr_api.cs
 
 # Discord bot
 discord-bot/node_modules/
-discord-bot/licenses.db
+discord-bot/licenses.json
 discord-bot/.env
 
 # User secrets / dev state

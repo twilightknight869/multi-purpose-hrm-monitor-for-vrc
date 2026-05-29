@@ -1,30 +1,19 @@
-const Database = require('better-sqlite3');
+const fs   = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 
-const db = new Database(path.join(__dirname, 'licenses.db'));
+const DB_FILE = path.join(__dirname, 'licenses.json');
 
-// Create tables
-db.exec(`
-  CREATE TABLE IF NOT EXISTS licenses (
-    id          INTEGER PRIMARY KEY AUTOINCREMENT,
-    key         TEXT    UNIQUE NOT NULL,
-    discord_id  TEXT    NOT NULL,
-    discord_tag TEXT    NOT NULL,
-    tier        TEXT    NOT NULL DEFAULT 'premium',
-    created_at  INTEGER NOT NULL,
-    expires_at  INTEGER,          -- NULL = never expires
-    active      INTEGER NOT NULL DEFAULT 1,
-    note        TEXT
-  );
+// ── Load / save ───────────────────────────────────────────────────
+function load() {
+  if (!fs.existsSync(DB_FILE)) return { licenses: [], verifications: [] };
+  try { return JSON.parse(fs.readFileSync(DB_FILE, 'utf8')); }
+  catch { return { licenses: [], verifications: [] }; }
+}
 
-  CREATE TABLE IF NOT EXISTS verifications (
-    id         INTEGER PRIMARY KEY AUTOINCREMENT,
-    key        TEXT    NOT NULL,
-    ip         TEXT,
-    checked_at INTEGER NOT NULL
-  );
-`);
+function save(data) {
+  fs.writeFileSync(DB_FILE, JSON.stringify(data, null, 2), 'utf8');
+}
 
 // ── Key generation ────────────────────────────────────────────────
 function generateKey() {
@@ -34,60 +23,73 @@ function generateKey() {
 
 // ── CRUD ──────────────────────────────────────────────────────────
 function createKey(discordId, discordTag, note = null, expiresInDays = null) {
+  const db  = load();
   const key = generateKey();
   const now = Date.now();
-  const expiresAt = expiresInDays ? now + expiresInDays * 86400000 : null;
 
-  db.prepare(`
-    INSERT INTO licenses (key, discord_id, discord_tag, tier, created_at, expires_at, active, note)
-    VALUES (?, ?, ?, 'premium', ?, ?, 1, ?)
-  `).run(key, discordId, discordTag, now, expiresAt, note);
-
+  db.licenses.push({
+    id:          db.licenses.length + 1,
+    key,
+    discord_id:  discordId,
+    discord_tag: discordTag,
+    tier:        'premium',
+    created_at:  now,
+    expires_at:  expiresInDays ? now + expiresInDays * 86400000 : null,
+    active:      true,
+    note,
+  });
+  save(db);
   return key;
 }
 
 function getKeyByDiscordId(discordId) {
-  return db.prepare('SELECT * FROM licenses WHERE discord_id = ? AND active = 1').get(discordId);
+  return load().licenses.find(k => k.discord_id === discordId && k.active) ?? null;
 }
 
 function getKeyByKey(key) {
-  return db.prepare('SELECT * FROM licenses WHERE key = ?').get(key);
+  return load().licenses.find(k => k.key === key) ?? null;
 }
 
 function revokeKey(discordId) {
-  const result = db.prepare('UPDATE licenses SET active = 0 WHERE discord_id = ? AND active = 1').run(discordId);
-  return result.changes > 0;
+  const db = load();
+  const entry = db.licenses.find(k => k.discord_id === discordId && k.active);
+  if (!entry) return false;
+  entry.active = false;
+  save(db);
+  return true;
 }
 
 function listKeys(limit = 20) {
-  return db.prepare('SELECT * FROM licenses ORDER BY created_at DESC LIMIT ?').all(limit);
+  return load().licenses.slice(-limit).reverse();
 }
 
 function verifyKey(key, ip = null) {
   const license = getKeyByKey(key);
-  if (!license) return { valid: false, reason: 'unknown_key' };
-  if (!license.active) return { valid: false, reason: 'revoked' };
+  if (!license)         return { valid: false, reason: 'unknown_key' };
+  if (!license.active)  return { valid: false, reason: 'revoked' };
   if (license.expires_at && Date.now() > license.expires_at)
     return { valid: false, reason: 'expired' };
 
-  // Log the verification
-  db.prepare('INSERT INTO verifications (key, ip, checked_at) VALUES (?, ?, ?)')
-    .run(key, ip, Date.now());
+  // Log verification
+  const db = load();
+  db.verifications.push({ key, ip, checked_at: Date.now() });
+  save(db);
 
   return {
-    valid: true,
-    tier: license.tier,
-    discord_id: license.discord_id,
+    valid:       true,
+    tier:        license.tier,
+    discord_id:  license.discord_id,
     discord_tag: license.discord_tag,
-    expires_at: license.expires_at,
+    expires_at:  license.expires_at,
   };
 }
 
 function getStats() {
+  const db = load();
   return {
-    total:  db.prepare('SELECT COUNT(*) as c FROM licenses').get().c,
-    active: db.prepare('SELECT COUNT(*) as c FROM licenses WHERE active = 1').get().c,
-    checks: db.prepare('SELECT COUNT(*) as c FROM verifications').get().c,
+    total:  db.licenses.length,
+    active: db.licenses.filter(k => k.active).length,
+    checks: db.verifications.length,
   };
 }
 
