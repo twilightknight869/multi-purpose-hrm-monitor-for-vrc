@@ -86,6 +86,14 @@ public class AppSettings
         set => Set("HeartbeatSound", value);
     }
 
+    // ── Invisible chatbox background (premium/dev only) ───────────
+    // Prepends zero-width + invisible Unicode chars that suppress VRChat's bubble
+    public bool InvisibleChatbox
+    {
+        get => GetBool("InvisibleChatbox", false);
+        set => Set("InvisibleChatbox", value);
+    }
+
     // ── Sharing (host) ────────────────────────────────────────────
     public bool SharingEnabled
     {

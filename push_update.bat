@@ -72,49 +72,61 @@ set NOTES=## HRM Monitor v%VERSION%^
 
 **Heart Rate Broadcasting**^
 
-- BPM shared with partner via private relay server — no rate limits, real-time updates^
+- BPM shared with partner via private relay server - no rate limits, real-time updates^
 
-- Room codes are now stable and persist between sessions^
+- Room codes are stable and persist between sessions^
 
 - Viewer BPM display changes color with host tiers (LOW/MED/HIGH)^
 
+- Screen shake and heart pulse speed on viewer scales live with BPM^
+
 ^
 
-**VRChat Integration**^
+**VRChat Chatbox**^
 
-- Prettier chatbox output with progress bar and tier label^
+- Prettier output: progress bar, tier label, clean formatting^
 
-- Heartbeat sound effect on overlay and viewer — toggleable in Settings^
+- Invisible background mode - text floats in world with no grey bubble (Premium)^
+
+- All pronouns: His, Her, Their, Our, Xe/Xem, Ze/Hir, Ey/Em, Fae/Faer and more^
+
+- Partner HR OSC for couples - both HRs show on avatar simultaneously^
+
+^
+
+**Overlay**^
+
+- Heartbeat sound effect synced to BPM - toggleable in Settings^
 
 - Screen shake on both broadcaster and viewer at high BPM^
 
-- Heart pulse speed scales live with BPM^
+- Heart pulse animation speed scales live with BPM^
 
-- All pronouns supported: His, Her, Their, Our, Xe/Xem, Ze/Hir, Ey/Em, Fae/Faer and more^
-
-- Partner HR OSC parameter for couples (both HRs show on avatar simultaneously)^
+- Right-click overlay to toggle always-on-top^
 
 ^
 
-**Settings ^ Persistence**^
+**Settings and Persistence**^
 
-- Spotify OAuth token saved — no re-authorization needed after updates^
+- Spotify token saved - no re-authorization needed after updates^
 
 - All OSC settings, tokens, and customizations persist across updates^
 
-- Live status panel shows Pulsoid, OSC, Chatbox, Sharing, and Spotify status^
+- Live status panel shows Pulsoid, OSC, Chatbox, Sharing, Spotify and License status^
 
 ^
 
 **Bug Fixes**^
 
-- Fixed room code changing on every BPM publish (sharing now works correctly)^
+- Fixed room code changing on every BPM publish^
 
 - Fixed tray menu exit leaving context menu on screen^
 
-- Fixed heartbeat icon showing as ? in VRChat chatbox^
+- Fixed heartbeat icon showing as question mark in VRChat chatbox^
 
 - Fixed update checker triggering when already on latest version^
+
+- Fixed license check deadlocking on dev key activation^
 
 ^
 

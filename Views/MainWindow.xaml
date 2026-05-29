@@ -86,6 +86,10 @@
                                 <CheckBox x:Name="ChatboxCheck" Content="Send to VRChat chatbox"
                                           Margin="0,6,0,0"
                                           Checked="ChatboxCheck_Changed" Unchecked="ChatboxCheck_Changed"/>
+                                <CheckBox x:Name="InvisibleChatboxCheck"
+                                          Content="Invisible background mode (Premium)"
+                                          Margin="0,6,0,0" Visibility="Collapsed"
+                                          Checked="InvisibleChatbox_Changed" Unchecked="InvisibleChatbox_Changed"/>
 
                                 <TextBlock Text="CHATBOX TEMPLATE" Style="{StaticResource SectionHeader}"/>
                                 <TextBox x:Name="ChatboxTemplate" Height="30"
@@ -405,7 +409,7 @@
 
                         <GroupBox Header="About">
                             <StackPanel>
-                                <TextBlock Text="HRM Monitor v2.0.2" Foreground="#FFe03535" FontWeight="Bold"/>
+                                <TextBlock Text="HRM Monitor v2.0.3" Foreground="#FFe03535" FontWeight="Bold"/>
                                 <TextBlock Text="Made by CRIMSON" Foreground="#FF888899" Margin="0,4,0,0"/>
                                 <TextBlock Text="Discord: crimsondreamz" Foreground="#FF888899"/>
                             </StackPanel>

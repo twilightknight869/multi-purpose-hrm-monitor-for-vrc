@@ -61,8 +61,9 @@ public partial class MainWindow : Window
         _suppressChanges = true;
         var s = AppSettings.Instance;
 
-        // Token — just show placeholder dots if a token exists
+        // Token
         TokenBox.Password   = s.PulsoidToken;
+        InvisibleChatboxCheck.IsChecked = s.InvisibleChatbox;
 
         // OSC
         OscCheck.IsChecked      = s.OscEnabled;
@@ -217,7 +218,7 @@ public partial class MainWindow : Window
         string trackVal  = string.IsNullOrEmpty(_lastTrack)  ? "" : $"\n>> {_lastTrack}".Truncate(36);
         string artistVal = string.IsNullOrEmpty(_lastArtist) ? "" : $"\n   {_lastArtist}".Truncate(36);
 
-        return s.ChatboxTemplate
+        var msg = s.ChatboxTemplate
             .Replace("{bpm}",     bpm > 0 ? bpm.ToString() : "--")
             .Replace("{bar}",     barStr)
             .Replace("{tier}",    tier)
@@ -226,6 +227,13 @@ public partial class MainWindow : Window
             .Replace("{artist}",  artistVal)
             .Replace("{pronoun}", s.Pronoun)
             .TrimEnd();
+
+        // Invisible chatbox background (premium/dev only)
+        // Prepends invisible Unicode chars that suppress VRChat's grey bubble
+        if (s.InvisibleChatbox && _license.IsPremium)
+            msg = "​⁣⁤﻿" + msg;
+
+        return msg;
     }
 
     // ── Generic status dot + label helper ────────────────────────
@@ -307,6 +315,13 @@ public partial class MainWindow : Window
     {
         if (_suppressChanges) return;
         AppSettings.Instance.ChatboxEnabled = ChatboxCheck.IsChecked == true;
+    }
+
+    private void InvisibleChatbox_Changed(object sender, RoutedEventArgs e)
+    {
+        if (_suppressChanges) return;
+        AppSettings.Instance.InvisibleChatbox = InvisibleChatboxCheck.IsChecked == true;
+        UpdatePreview();
     }
 
     private void ChatboxTemplate_Changed(object sender, TextChangedEventArgs e)
@@ -587,13 +602,15 @@ public partial class MainWindow : Window
         // Hide free timer and show dev toggle when premium is confirmed
         if (status == LicenseStatus.Premium)
         {
-            FreeTimeLbl.Visibility = Visibility.Collapsed;
+            FreeTimeLbl.Visibility          = Visibility.Collapsed;
+            InvisibleChatboxCheck.Visibility = Visibility.Visible;
             if (_license.ActiveDevSlot >= 1 && _license.ActiveDevSlot <= 3)
                 DevTagCheck.Visibility = Visibility.Visible;
         }
         else
         {
-            DevTagCheck.Visibility = Visibility.Collapsed;
+            DevTagCheck.Visibility           = Visibility.Collapsed;
+            InvisibleChatboxCheck.Visibility  = Visibility.Collapsed;
         }
 
         // Dev key pending — just update the badge; DevKeyWindow is opened only
