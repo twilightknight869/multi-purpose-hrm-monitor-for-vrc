@@ -9,6 +9,7 @@ const API_SECRET = process.env.API_SECRET || 'change-me-in-env';
 // ── Middleware: require secret header ─────────────────────────────
 function requireSecret(req, res, next) {
   if (req.headers['x-hrm-secret'] !== API_SECRET) {
+    console.log(`[Auth] REJECTED ${req.method} ${req.path} — bad secret`);
     return res.status(401).json({ error: 'unauthorized' });
   }
   next();
@@ -60,6 +61,7 @@ app.post('/relay/:code', requireSecret, (req, res) => {
     catch { room.clients.delete(client); }
   }
 
+  console.log(`[Relay] ${code} BPM=${bpm} pushed to ${room.clients.size} viewer(s)`);
   res.json({ ok: true, viewers: room.clients.size });
 });
 
