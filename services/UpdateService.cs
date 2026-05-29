@@ -12,7 +12,7 @@ public class UpdateService : IDisposable
 {
     private const string Owner   = "twilightknight869";
     private const string Repo    = "Multi-Purpose-HRM-Monitor-For-VRC";
-    private const string Version = "2.0.0";
+    private const string Version = "2.0.1";
 
     private readonly HttpClient _http = new();
     private readonly System.Timers.Timer _timer;

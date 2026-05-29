@@ -324,7 +324,7 @@
 
                         <GroupBox Header="About">
                             <StackPanel>
-                                <TextBlock Text="HRM Monitor v2.0.0" Foreground="#FFe03535" FontWeight="Bold"/>
+                                <TextBlock Text="HRM Monitor v2.0.1" Foreground="#FFe03535" FontWeight="Bold"/>
                                 <TextBlock Text="Made by CRIMSON" Foreground="#FF888899" Margin="0,4,0,0"/>
                                 <TextBlock Text="Discord: crimsondreamz" Foreground="#FF888899"/>
                             </StackPanel>
