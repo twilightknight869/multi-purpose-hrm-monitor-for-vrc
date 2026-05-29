@@ -89,7 +89,16 @@ public class AppSettings
     }
     public string RoomCode
     {
-        get => Get("RoomCode", GenerateRoomCode());
+        get
+        {
+            var code = _key.GetValue("RoomCode") as string;
+            if (string.IsNullOrEmpty(code))
+            {
+                code = GenerateRoomCode();
+                _key.SetValue("RoomCode", code);   // save it so it stays the same
+            }
+            return code;
+        }
         set => Set("RoomCode", value);
     }
     public string AblyApiKey
