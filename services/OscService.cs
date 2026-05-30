@@ -87,10 +87,10 @@ public class OscService : IDisposable
 
     // ── OSC encoding primitives ───────────────────────────────────
 
-    /// <summary>Null-terminated string padded to the next multiple of 4 bytes.</summary>
+    /// <summary>Null-terminated UTF-8 string padded to the next multiple of 4 bytes.</summary>
     private static byte[] OscString(string s)
     {
-        var raw    = Encoding.ASCII.GetBytes(s);
+        var raw    = Encoding.UTF8.GetBytes(s);   // UTF-8 so Unicode/emoji pass through correctly
         int padded = ((raw.Length + 4) / 4) * 4;
         var result = new byte[padded];
         Array.Copy(raw, result, raw.Length);

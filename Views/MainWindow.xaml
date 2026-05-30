@@ -86,6 +86,10 @@
                                 <CheckBox x:Name="ChatboxCheck" Content="Send to VRChat chatbox"
                                           Margin="0,6,0,0"
                                           Checked="ChatboxCheck_Changed" Unchecked="ChatboxCheck_Changed"/>
+                                <CheckBox x:Name="UnicodeEmojiCheck"
+                                          Content="Unicode symbols (♥ ♡ ❤ ♪ ▲ ▼)"
+                                          Margin="0,6,0,0"
+                                          Checked="UnicodeEmoji_Changed" Unchecked="UnicodeEmoji_Changed"/>
                                 <CheckBox x:Name="InvisibleChatboxCheck"
                                           Content="Invisible background mode (Premium)"
                                           Margin="0,6,0,0" Visibility="Collapsed"
@@ -150,27 +154,54 @@
                             </StackPanel>
                         </GroupBox>
 
-                        <!-- Spotify -->
-                        <GroupBox Header="Spotify Now Playing">
-                            <StackPanel>
-                                <CheckBox x:Name="SpotifyCheck" Content="Enable Spotify integration"
-                                          Checked="SpotifyCheck_Changed" Unchecked="SpotifyCheck_Changed"/>
-                                <TextBlock Text="Client ID" Style="{StaticResource SectionHeader}"/>
-                                <TextBox x:Name="SpClientId" Height="28" TextChanged="SpotifyText_Changed"/>
-                                <TextBlock Text="Client Secret" Style="{StaticResource SectionHeader}"/>
-                                <PasswordBox x:Name="SpClientSecret" Height="28" PasswordChanged="SpotifySecret_Changed"/>
-                                <TextBlock Text="Redirect URI" Style="{StaticResource SectionHeader}"/>
-                                <TextBox x:Name="SpRedirectUri" Height="28" TextChanged="SpotifyText_Changed"/>
-                                <Button Content="Authorize Spotify" Margin="0,10,0,0"
-                                        HorizontalAlignment="Left" Click="SpotifyAuth_Click"/>
-                            </StackPanel>
-                        </GroupBox>
+                        <!-- Spotify (collapsed by default) -->
+                        <Expander Header="🎵  Spotify Now Playing" Margin="0,4,0,0" Foreground="#FF888899">
+                            <Border Background="#FF0d0d1a" Padding="8,8,8,4" Margin="0,4,0,0" CornerRadius="4">
+                                <StackPanel>
+                                    <CheckBox x:Name="SpotifyCheck" Content="Enable Spotify integration"
+                                              Checked="SpotifyCheck_Changed" Unchecked="SpotifyCheck_Changed"/>
+                                    <TextBlock Text="Client ID" Style="{StaticResource SectionHeader}"/>
+                                    <TextBox x:Name="SpClientId" Height="28" TextChanged="SpotifyText_Changed"/>
+                                    <TextBlock Text="Client Secret" Style="{StaticResource SectionHeader}"/>
+                                    <PasswordBox x:Name="SpClientSecret" Height="28" PasswordChanged="SpotifySecret_Changed"/>
+                                    <TextBlock Text="Redirect URI" Style="{StaticResource SectionHeader}"/>
+                                    <TextBox x:Name="SpRedirectUri" Height="28" TextChanged="SpotifyText_Changed"/>
+                                    <Button Content="Authorize Spotify" Margin="0,10,0,4"
+                                            HorizontalAlignment="Left" Click="SpotifyAuth_Click"/>
+                                </StackPanel>
+                            </Border>
+                        </Expander>
 
-                        <!-- SteamVR -->
-                        <GroupBox Header="SteamVR Wrist Overlay">
+                        <!-- SteamVR (collapsed by default) -->
+                        <GroupBox Header="SteamVR Wrist Overlay (Apple Watch style)">
                             <StackPanel>
                                 <CheckBox x:Name="SteamVrCheck" Content="Enable wrist overlay (start SteamVR first)"
                                           Checked="SteamVrCheck_Changed" Unchecked="SteamVrCheck_Changed"/>
+                                <CheckBox x:Name="VrRaiseToViewCheck" Content="Raise to view (show info panel when wrist raised)"
+                                          Margin="0,8,0,0"
+                                          Checked="VrRaiseToView_Changed" Unchecked="VrRaiseToView_Changed"/>
+
+                                <TextBlock Text="HAND" Style="{StaticResource SectionHeader}"/>
+                                <StackPanel Orientation="Horizontal">
+                                    <RadioButton x:Name="VrLeftHand"  Content="Left hand"  GroupName="VrHand"
+                                                 Margin="0,0,16,0" Checked="VrHand_Changed"/>
+                                    <RadioButton x:Name="VrRightHand" Content="Right hand" GroupName="VrHand"
+                                                 Checked="VrHand_Changed"/>
+                                </StackPanel>
+
+                                <TextBlock Text="WATCH SIZE" Style="{StaticResource SectionHeader}"/>
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="40"/>
+                                    </Grid.ColumnDefinitions>
+                                    <Slider x:Name="VrSizeSlider" Grid.Column="0"
+                                            Minimum="0.04" Maximum="0.16" SmallChange="0.01"
+                                            VerticalAlignment="Center"
+                                            ValueChanged="VrSize_Changed"/>
+                                    <TextBlock x:Name="VrSizeLbl" Grid.Column="1" VerticalAlignment="Center"
+                                               HorizontalAlignment="Right" Foreground="#FFe03535" FontSize="11"/>
+                                </Grid>
                             </StackPanel>
                         </GroupBox>
 
@@ -225,6 +256,21 @@
 
                     <Button Content="💑   CONNECT &amp; WATCH" Height="44" FontSize="14" FontWeight="Bold"
                             Margin="0,12,0,0" Click="Watch_Click"/>
+
+                    <!-- Group Watch (horror game mode) -->
+                    <GroupBox Header="Group Watch — Horror Game Mode" Margin="0,12,0,0">
+                        <StackPanel>
+                            <TextBlock Style="{StaticResource HintText}"
+                                       Text="Watch up to 5 friends at once. Enter each room code on its own line. All HRs show in your VR wrist panel."/>
+                            <TextBlock Text="FRIEND ROOM CODES (one per line)" Style="{StaticResource SectionHeader}"/>
+                            <TextBox x:Name="GroupCodesBox" Height="90" AcceptsReturn="True"
+                                     FontFamily="Consolas" FontSize="13"
+                                     VerticalScrollBarVisibility="Auto"
+                                     TextChanged="GroupCodes_Changed"/>
+                            <Button Content="👻  WATCH GROUP" Height="38" FontSize="13" FontWeight="Bold"
+                                    Margin="0,10,0,0" Click="WatchGroup_Click"/>
+                        </StackPanel>
+                    </GroupBox>
                 </StackPanel>
             </TabItem>
 
@@ -409,9 +455,163 @@
 
                         <GroupBox Header="About">
                             <StackPanel>
-                                <TextBlock Text="HRM Monitor v2.0.3" Foreground="#FFe03535" FontWeight="Bold"/>
+                                <TextBlock Text="HRM Monitor v3.0.0" Foreground="#FFe03535" FontWeight="Bold"/>
                                 <TextBlock Text="Made by CRIMSON" Foreground="#FF888899" Margin="0,4,0,0"/>
                                 <TextBlock Text="Discord: crimsondreamz" Foreground="#FF888899"/>
+                            </StackPanel>
+                        </GroupBox>
+
+                        <!-- UI Customization (premium/dev only) -->
+                        <GroupBox x:Name="CustomizeGroup" Header="UI Customization" Visibility="Collapsed">
+                            <StackPanel>
+                                <TextBlock Text="ACCENT COLOR" Style="{StaticResource SectionHeader}"/>
+                                <StackPanel Orientation="Horizontal" Margin="0,4,0,0">
+                                    <Button x:Name="AccentRedBtn"    Content="●" Foreground="#FFe03535" Width="32" Height="32" Margin="0,0,6,0" Click="Accent_Click" Tag="#FFe03535"/>
+                                    <Button x:Name="AccentPurpleBtn" Content="●" Foreground="#FF9b59b6" Width="32" Height="32" Margin="0,0,6,0" Click="Accent_Click" Tag="#FF9b59b6"/>
+                                    <Button x:Name="AccentBlueBtn"   Content="●" Foreground="#FF3498db" Width="32" Height="32" Margin="0,0,6,0" Click="Accent_Click" Tag="#FF3498db"/>
+                                    <Button x:Name="AccentGreenBtn"  Content="●" Foreground="#FF2ecc71" Width="32" Height="32" Margin="0,0,6,0" Click="Accent_Click" Tag="#FF2ecc71"/>
+                                    <Button x:Name="AccentPinkBtn"   Content="●" Foreground="#FFe91e8c" Width="32" Height="32" Margin="0,0,6,0" Click="Accent_Click" Tag="#FFe91e8c"/>
+                                    <Button x:Name="AccentOrangeBtn" Content="●" Foreground="#FFff6b35" Width="32" Height="32" Margin="0,0,6,0" Click="Accent_Click" Tag="#FFff6b35"/>
+                                    <Button x:Name="AccentWhiteBtn"  Content="●" Foreground="#FFe0e0e0" Width="32" Height="32" Click="Accent_Click" Tag="#FFe0e0e0"/>
+                                </StackPanel>
+
+                                <TextBlock Text="THEME" Style="{StaticResource SectionHeader}"/>
+                                <StackPanel Orientation="Horizontal">
+                                    <RadioButton x:Name="ThemeDark"  Content="Dark"  GroupName="Theme" Margin="0,0,16,0" Checked="Theme_Changed"/>
+                                    <RadioButton x:Name="ThemeDarker" Content="Darker" GroupName="Theme" Margin="0,0,16,0" Checked="Theme_Changed"/>
+                                    <RadioButton x:Name="ThemeOled"  Content="OLED"  GroupName="Theme" Checked="Theme_Changed"/>
+                                </StackPanel>
+
+                                <TextBlock x:Name="AccentPreview" Margin="0,10,0,0"
+                                           FontFamily="Consolas" FontSize="11"
+                                           Foreground="#FFe03535"
+                                           Text="♥  Preview — HRM MONITOR  ●  connected"/>
+                            </StackPanel>
+                        </GroupBox>
+
+                    </StackPanel>
+                </ScrollViewer>
+            </TabItem>
+
+            <!-- ══ HELP ════════════════════════════════════════════ -->
+            <TabItem Header="❓  Help">
+                <ScrollViewer VerticalScrollBarVisibility="Auto" Padding="12,0,12,0">
+                    <StackPanel Margin="0,8,0,24">
+
+                        <GroupBox Header="Quick Start">
+                            <StackPanel>
+                                <TextBlock TextWrapping="Wrap" Foreground="#FFe0e0e0" LineHeight="20">
+                                    <Run FontWeight="Bold" Foreground="#FFe03535">1. Get your Pulsoid token</Run>
+                                    <LineBreak/>
+                                    <Run>Go to pulsoid.net → Settings → Integrations → Manual connection. Copy the token and paste it in the Broadcaster tab.</Run>
+                                    <LineBreak/><LineBreak/>
+                                    <Run FontWeight="Bold" Foreground="#FFe03535">2. Enable OSC in VRChat</Run>
+                                    <LineBreak/>
+                                    <Run>In VRChat: Action Menu → Options → OSC → Enable. This lets HRM Monitor talk to your avatar and chatbox.</Run>
+                                    <LineBreak/><LineBreak/>
+                                    <Run FontWeight="Bold" Foreground="#FFe03535">3. Click START OVERLAY</Run>
+                                    <LineBreak/>
+                                    <Run>The floating overlay appears. The dot in the top-right turns green when Pulsoid connects.</Run>
+                                </TextBlock>
+                            </StackPanel>
+                        </GroupBox>
+
+                        <GroupBox Header="Chatbox Template Tokens">
+                            <StackPanel>
+                                <TextBlock TextWrapping="Wrap" Foreground="#FFe0e0e0" LineHeight="22" FontFamily="Consolas" FontSize="11">
+                                    <Run Foreground="#FFe03535">{bpm}</Run><Run>      — Live heart rate number</Run><LineBreak/>
+                                    <Run Foreground="#FFe03535">{bar}</Run><Run>      — Progress bar (=====-----)</Run><LineBreak/>
+                                    <Run Foreground="#FFe03535">{tier}</Run><Run>     — LOW / MED / HIGH</Run><LineBreak/>
+                                    <Run Foreground="#FFe03535">{icon}</Run><Run>     — ♡ / ♥~ / ❤!! based on tier</Run><LineBreak/>
+                                    <Run Foreground="#FFe03535">{pronoun}</Run><Run>  — His / Her / Their / Our etc.</Run><LineBreak/>
+                                    <Run Foreground="#FFe03535">{track}</Run><Run>    — Spotify track name</Run><LineBreak/>
+                                    <Run Foreground="#FFe03535">{artist}</Run><Run>   — Spotify artist name</Run>
+                                </TextBlock>
+                                <Border Background="#FF0d0d1a" CornerRadius="4" Padding="8,6" Margin="0,8,0,0">
+                                    <TextBlock FontFamily="Consolas" FontSize="11" Foreground="#FF4488cc" TextWrapping="Wrap"
+                                               Text="{}{icon} {bpm} BPM  ( {tier} )&#x0a;[{bar}]{track}"/>
+                                </Border>
+                            </StackPanel>
+                        </GroupBox>
+
+                        <GroupBox Header="Friend HR Sharing">
+                            <TextBlock TextWrapping="Wrap" Foreground="#FFe0e0e0" LineHeight="20">
+                                <Run FontWeight="Bold">Host (you):</Run><Run> Broadcaster tab → tick Broadcast my heart rate → Start Overlay. Share the Room Code.</Run>
+                                <LineBreak/><LineBreak/>
+                                <Run FontWeight="Bold">Viewer (friend):</Run><Run> Viewer tab → enter the Room Code → Connect and Watch. A floating window shows the host's BPM live.</Run>
+                                <LineBreak/><LineBreak/>
+                                <Run FontWeight="Bold">Couples OSC:</Run><Run> Viewer tab → enable Partner HR on my avatar → set the parameter name (e.g. /avatar/parameters/HerHR). Your avatar gets both HRs at once.</Run>
+                                <LineBreak/><LineBreak/>
+                                <Run FontWeight="Bold">Group / Horror mode:</Run><Run> Viewer tab → Group Watch section → enter up to 5 room codes one per line → Watch Group. All friends' HRs appear in your VR wrist panel.</Run>
+                            </TextBlock>
+                        </GroupBox>
+
+                        <GroupBox Header="VR Wrist Overlay (SteamVR)">
+                            <TextBlock TextWrapping="Wrap" Foreground="#FFe0e0e0" LineHeight="20">
+                                <Run>Start SteamVR first, then tick Enable wrist overlay in the Broadcaster tab. The overlay anchors to your chosen hand like an Apple Watch.</Run>
+                                <LineBreak/><LineBreak/>
+                                <Run FontWeight="Bold">Raise to view:</Run><Run> Lift your wrist like checking a watch — an expanded panel fades in showing BPM, status, and group HRs.</Run>
+                                <LineBreak/><LineBreak/>
+                                <Run FontWeight="Bold">Hand switching:</Run><Run> Settings → SteamVR section → Left / Right hand radio buttons. Changes instantly.</Run>
+                                <LineBreak/><LineBreak/>
+                                <Run FontWeight="Bold">Watch size:</Run><Run> Adjust the size slider (4 cm – 16 cm) to match your preference.</Run>
+                            </TextBlock>
+                        </GroupBox>
+
+                        <GroupBox Header="Overlay Tips">
+                            <TextBlock TextWrapping="Wrap" Foreground="#FFe0e0e0" LineHeight="20">
+                                <Run FontWeight="Bold">Drag:</Run><Run> Left-click and drag the overlay to reposition it anywhere on screen.</Run>
+                                <LineBreak/>
+                                <Run FontWeight="Bold">Always on top:</Run><Run> Right-click the overlay to toggle always-on-top. Border flashes orange when it is off.</Run>
+                                <LineBreak/>
+                                <Run FontWeight="Bold">Heartbeat sound:</Run><Run> Settings → Overlay → Heartbeat sound effect checkbox. Volume follows your Windows volume.</Run>
+                                <LineBreak/>
+                                <Run FontWeight="Bold">Screen shake:</Run><Run> Shakes when BPM hits the HIGH threshold. Disable in Settings → Overlay.</Run>
+                            </TextBlock>
+                        </GroupBox>
+
+                        <GroupBox Header="Spotify Integration">
+                            <TextBlock TextWrapping="Wrap" Foreground="#FFe0e0e0" LineHeight="20">
+                                <Run>1. Create a Spotify app at developer.spotify.com → Dashboard → Create App.</Run>
+                                <LineBreak/>
+                                <Run>2. Set Redirect URI to http://127.0.0.1:8888/callback in the Spotify app settings.</Run>
+                                <LineBreak/>
+                                <Run>3. Copy Client ID and Client Secret into HRM Monitor → Broadcaster → Spotify.</Run>
+                                <LineBreak/>
+                                <Run>4. Click Authorize Spotify — a browser window opens. Log in and approve.</Run>
+                                <LineBreak/>
+                                <Run>5. Add {track} and/or {artist} to your chatbox template to show the current song.</Run>
+                                <LineBreak/>
+                                <Run>Your token is saved — you only need to authorize once per install.</Run>
+                            </TextBlock>
+                        </GroupBox>
+
+                        <GroupBox Header="Safety &amp; Transparency">
+                            <StackPanel>
+                                <TextBlock TextWrapping="Wrap" Foreground="#FF44cc77" FontWeight="Bold"
+                                           Text="This software is open source and safe to use." Margin="0,0,0,6"/>
+                                <TextBlock TextWrapping="Wrap" Foreground="#FFe0e0e0" LineHeight="20">
+                                    <Run FontWeight="Bold">What it connects to:</Run><LineBreak/>
+                                    <Run Foreground="#FF4488cc">• pulsoid.net</Run><Run> — reads your heart rate (your token only)</Run><LineBreak/>
+                                    <Run Foreground="#FF4488cc">• 127.0.0.1:9000</Run><Run> — local OSC to VRChat (stays on your PC)</Run><LineBreak/>
+                                    <Run Foreground="#FF4488cc">• railway.app relay</Run><Run> — room code + BPM number for friend sharing</Run><LineBreak/>
+                                    <Run Foreground="#FF4488cc">• api.github.com</Run><Run> — checks for updates (version string only)</Run><LineBreak/>
+                                    <LineBreak/>
+                                    <Run FontWeight="Bold">What it does NOT do:</Run><LineBreak/>
+                                    <Run Foreground="#FFff4444">✗</Run><Run> Access your files or documents</Run><LineBreak/>
+                                    <Run Foreground="#FFff4444">✗</Run><Run> Collect or transmit personal data</Run><LineBreak/>
+                                    <Run Foreground="#FFff4444">✗</Run><Run> Install drivers, services, or startup entries</Run><LineBreak/>
+                                    <Run Foreground="#FFff4444">✗</Run><Run> Run in the background unless you launch it</Run><LineBreak/>
+                                    <LineBreak/>
+                                    <Run FontWeight="Bold">Settings location:</Run>
+                                    <Run> Windows Registry → HKCU\Software\HRMMonitor\v2</Run><LineBreak/>
+                                    <Run FontWeight="Bold">Source code:</Run>
+                                    <Run> github.com/twilightknight869/Multi-Purpose-HRM-Monitor-For-VRC (v2 branch)</Run>
+                                </TextBlock>
+                                <Button Content="View Source Code on GitHub" Margin="0,10,0,0"
+                                        HorizontalAlignment="Left" Click="ViewSource_Click"/>
+                                <Button Content="Scan on VirusTotal" Margin="0,6,0,0"
+                                        HorizontalAlignment="Left" Click="VirusTotal_Click"/>
                             </StackPanel>
                         </GroupBox>
 

@@ -22,7 +22,7 @@
                 <TextBlock Text="HRM MONITOR" FontSize="17" FontWeight="Bold"
                            FontFamily="Segoe UI" Foreground="#FFe03535"
                            HorizontalAlignment="Center" Margin="0,6,0,0"/>
-                <TextBlock x:Name="VersionLbl" Text="v2.0.3  ·  starting up"
+                <TextBlock x:Name="VersionLbl" Text="v3.0.0  ·  starting up"
                            FontSize="11" FontFamily="Consolas"
                            HorizontalAlignment="Center" Foreground="#FF444455" Margin="0,4,0,0"/>
             </StackPanel>

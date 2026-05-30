@@ -64,6 +64,7 @@ public partial class MainWindow : Window
         // Token
         TokenBox.Password   = s.PulsoidToken;
         InvisibleChatboxCheck.IsChecked = s.InvisibleChatbox;
+        UnicodeEmojiCheck.IsChecked     = s.UnicodeEmojiMode;
 
         // OSC
         OscCheck.IsChecked      = s.OscEnabled;
@@ -85,7 +86,12 @@ public partial class MainWindow : Window
         SpRedirectUri.Text     = s.SpotifyRedirectUri;
 
         // SteamVR
-        SteamVrCheck.IsChecked = s.SteamVrEnabled;
+        SteamVrCheck.IsChecked      = s.SteamVrEnabled;
+        VrRaiseToViewCheck.IsChecked = s.VrRaiseToView;
+        VrLeftHand.IsChecked        = s.VrHand != "Right";
+        VrRightHand.IsChecked       = s.VrHand == "Right";
+        VrSizeSlider.Value          = s.VrOverlaySize;
+        VrSizeLbl.Text              = $"{(int)(s.VrOverlaySize * 100)}cm";
 
         // Settings tab
         BpmHighBox.Text = s.BpmHigh.ToString();
@@ -99,13 +105,21 @@ public partial class MainWindow : Window
         LicenseKeyBox.Text     = s.LicenseKey;
         DevTagCheck.IsChecked  = s.ShowDevTag;
 
+        // Theme/accent
+        ThemeDark.IsChecked   = s.Theme == "Dark";
+        ThemeDarker.IsChecked = s.Theme == "Darker";
+        ThemeOled.IsChecked   = s.Theme == "OLED";
+        ApplyAccent(s.AccentColor);
+        ApplyTheme(s.Theme);
+
         // Pronoun
         foreach (System.Windows.Controls.ComboBoxItem item in PronounBox.Items)
             if (item.Content.ToString() == s.Pronoun) { PronounBox.SelectedItem = item; break; }
         if (PronounBox.SelectedItem == null) PronounBox.SelectedIndex = 0;
 
         // Viewer
-        ViewerCodeBox.Text       = s.ViewerRoomCode;
+        ViewerCodeBox.Text  = s.ViewerRoomCode;
+        GroupCodesBox.Text  = s.GroupRoomCodes.Replace(",", "\n");
         FriendHrOscCheck.IsChecked = s.FriendHrOscEnabled;
         FriendHrParamBox.Text    = s.FriendHrOscParam;
 
@@ -204,18 +218,23 @@ public partial class MainWindow : Window
         int high = s.BpmHigh;
         int med  = s.BpmMed;
 
-        // Tier + icon — ASCII only (VRChat chatbox has limited font)
+        // Tier + icon — Unicode BMP symbols or ASCII fallback
+        bool uni = s.UnicodeEmojiMode;
         string tier, icon;
-        if (bpm >= high)      { tier = "HIGH";  icon = "<!>"; }
-        else if (bpm >= med)  { tier = "MED";   icon = "<3~"; }
-        else                  { tier = "LOW";   icon = "<3";  }
+        // Unicode: BMP-only symbols (U+0000–U+FFFF) — VRChat chatbox renders these fine.
+        // Complex emoji (💓💗) are outside BMP and show as ? — use ♥ ♡ ❤ instead.
+        // ASCII:   safe fallback.
+        if (bpm >= high)      { tier = uni ? "HIGH ▲" : "HIGH";  icon = uni ? "❤!!" : "<!>"; }
+        else if (bpm >= med)  { tier = uni ? "MED  ~" : "MED";   icon = uni ? "♥~"  : "<3~"; }
+        else                  { tier = uni ? "LOW  ▼" : "LOW";   icon = uni ? "♡"   : "<3";  }
 
         // Prettier progress bar — 12 wide with filled/empty chars
         int filled  = bpm > 0 ? Math.Clamp((int)Math.Round(bpm / 220.0 * 12), 0, 12) : 0;
         string barStr = new string('=', filled) + new string('-', 12 - filled);
 
         // Track/artist on their own lines with clean prefix
-        string trackVal  = string.IsNullOrEmpty(_lastTrack)  ? "" : $"\n>> {_lastTrack}".Truncate(36);
+        string trackPfx  = uni ? "♪ " : ">> ";
+        string trackVal  = string.IsNullOrEmpty(_lastTrack)  ? "" : $"\n{trackPfx}{_lastTrack}".Truncate(36);
         string artistVal = string.IsNullOrEmpty(_lastArtist) ? "" : $"\n   {_lastArtist}".Truncate(36);
 
         var msg = s.ChatboxTemplate
@@ -317,6 +336,13 @@ public partial class MainWindow : Window
         AppSettings.Instance.ChatboxEnabled = ChatboxCheck.IsChecked == true;
     }
 
+    private void UnicodeEmoji_Changed(object sender, RoutedEventArgs e)
+    {
+        if (_suppressChanges) return;
+        AppSettings.Instance.UnicodeEmojiMode = UnicodeEmojiCheck.IsChecked == true;
+        UpdatePreview();
+    }
+
     private void InvisibleChatbox_Changed(object sender, RoutedEventArgs e)
     {
         if (_suppressChanges) return;
@@ -414,6 +440,27 @@ public partial class MainWindow : Window
             _steamvr.Start();
         else if (SteamVrCheck.IsChecked == false)
             _steamvr.Stop();
+    }
+
+    private void VrRaiseToView_Changed(object sender, RoutedEventArgs e)
+    {
+        if (_suppressChanges) return;
+        AppSettings.Instance.VrRaiseToView = VrRaiseToViewCheck.IsChecked == true;
+    }
+
+    private void VrHand_Changed(object sender, RoutedEventArgs e)
+    {
+        if (_suppressChanges) return;
+        var hand = VrRightHand.IsChecked == true ? "Right" : "Left";
+        _steamvr.SetHand(hand);
+    }
+
+    private void VrSize_Changed(object sender, RoutedPropertyChangedEventArgs<double> e)
+    {
+        if (_suppressChanges) return;
+        var val = (float)VrSizeSlider.Value;
+        AppSettings.Instance.VrOverlaySize = val;
+        VrSizeLbl.Text = $"{(int)(val * 100)}cm";
     }
 
     // ── START / STOP ──────────────────────────────────────────────
@@ -517,6 +564,41 @@ public partial class MainWindow : Window
         AppSettings.Instance.FriendHrOscParam = FriendHrParamBox.Text;
     }
 
+    private void GroupCodes_Changed(object sender, TextChangedEventArgs e)
+    {
+        if (_suppressChanges) return;
+        AppSettings.Instance.GroupRoomCodes = GroupCodesBox.Text
+            .Replace("\r\n", ",").Replace("\n", ",").Trim(',');
+    }
+
+    private void WatchGroup_Click(object sender, RoutedEventArgs e)
+    {
+        var codes = GroupCodesBox.Text
+            .Split(new[] { '\n', '\r', ',' }, StringSplitOptions.RemoveEmptyEntries)
+            .Select(c => c.Trim().ToUpperInvariant())
+            .Where(c => c.Length == 6)
+            .Take(5)
+            .ToList();
+
+        if (!codes.Any())
+        {
+            MessageBox.Show("Enter at least one 6-character room code.", "Group Watch",
+                MessageBoxButton.OK, MessageBoxImage.Warning);
+            return;
+        }
+
+        AppSettings.Instance.GroupRoomCodes = string.Join(",", codes);
+
+        // Open a viewer window for each friend — they report BPM to the VR panel
+        _steamvr.ClearGroupBpms();
+        foreach (var code in codes)
+        {
+            var win = new ViewerWindow(code, _osc,
+                onGroupBpm: (c, b) => _steamvr.SetGroupBpm(c, b));
+            win.Show();
+        }
+    }
+
     private void Watch_Click(object sender, RoutedEventArgs e)
     {
         var code = ViewerCodeBox.Text.Trim().ToUpperInvariant();
@@ -550,6 +632,70 @@ public partial class MainWindow : Window
     }
 
     // ── License handlers ──────────────────────────────────────────
+    // ── Help tab buttons ─────────────────────────────────────────
+    private void ViewSource_Click(object sender, RoutedEventArgs e) =>
+        System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(
+            "https://github.com/twilightknight869/Multi-Purpose-HRM-Monitor-For-VRC/tree/v2")
+            { UseShellExecute = true });
+
+    private void VirusTotal_Click(object sender, RoutedEventArgs e) =>
+        System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(
+            "https://www.virustotal.com/gui/home/upload")
+            { UseShellExecute = true });
+
+    // ── UI Customization ──────────────────────────────────────────
+    private void Accent_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is not System.Windows.Controls.Button btn) return;
+        var color = btn.Tag?.ToString() ?? "#FFe03535";
+        AppSettings.Instance.AccentColor = color;
+        ApplyAccent(color);
+    }
+
+    private void Theme_Changed(object sender, RoutedEventArgs e)
+    {
+        if (_suppressChanges) return;
+        var theme = ThemeOled.IsChecked == true ? "OLED" :
+                    ThemeDarker.IsChecked == true ? "Darker" : "Dark";
+        AppSettings.Instance.Theme = theme;
+        ApplyTheme(theme);
+    }
+
+    private void ApplyAccent(string hex)
+    {
+        try
+        {
+            var brush = (Brush)new BrushConverter().ConvertFrom(hex)!;
+            // Update accent resources app-wide
+            Application.Current.Resources["AccentBrush"] = brush;
+            var color = ((SolidColorBrush)brush).Color;
+            Application.Current.Resources["AccentColor"] = color;
+
+            // Update preview text
+            AccentPreview.Foreground = brush;
+            AppSettings.Instance.AccentColor = hex;
+        }
+        catch { }
+    }
+
+    private void ApplyTheme(string theme)
+    {
+        var (bg, surface) = theme switch
+        {
+            "OLED"   => ("#FF000000", "#FF0a0a0a"),
+            "Darker" => ("#FF080810", "#FF0f0f1a"),
+            _        => ("#FF0f0f18", "#FF1a1a28"),
+        };
+        try
+        {
+            Application.Current.Resources["BgBrush"]      = new SolidColorBrush((Color)ColorConverter.ConvertFromString(bg)!);
+            Application.Current.Resources["SurfaceBrush"] = new SolidColorBrush((Color)ColorConverter.ConvertFromString(surface)!);
+            Application.Current.Resources["BgColor"]      = (Color)ColorConverter.ConvertFromString(bg)!;
+            Application.Current.Resources["SurfaceColor"] = (Color)ColorConverter.ConvertFromString(surface)!;
+        }
+        catch { }
+    }
+
     private void DevTag_Changed(object sender, RoutedEventArgs e)
     {
         if (_suppressChanges) return;
@@ -602,15 +748,17 @@ public partial class MainWindow : Window
         // Hide free timer and show dev toggle when premium is confirmed
         if (status == LicenseStatus.Premium)
         {
-            FreeTimeLbl.Visibility          = Visibility.Collapsed;
-            InvisibleChatboxCheck.Visibility = Visibility.Visible;
+            FreeTimeLbl.Visibility           = Visibility.Collapsed;
+            InvisibleChatboxCheck.Visibility  = Visibility.Visible;
+            CustomizeGroup.Visibility         = Visibility.Visible;
             if (_license.ActiveDevSlot >= 1 && _license.ActiveDevSlot <= 3)
                 DevTagCheck.Visibility = Visibility.Visible;
         }
         else
         {
-            DevTagCheck.Visibility           = Visibility.Collapsed;
+            DevTagCheck.Visibility            = Visibility.Collapsed;
             InvisibleChatboxCheck.Visibility  = Visibility.Collapsed;
+            CustomizeGroup.Visibility         = Visibility.Collapsed;
         }
 
         // Dev key pending — just update the badge; DevKeyWindow is opened only

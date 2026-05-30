@@ -14,6 +14,7 @@ public partial class ViewerWindow : Window
     private readonly SharingService  _sharing = new();
     private readonly OscService?     _osc;
     private readonly HeartbeatPlayer _heartbeat = new();
+    private System.Action<string, int>? _onGroupBpm; // callback to notify SteamVR service
 
     // ── Heart animation ───────────────────────────────────────────
     private readonly DispatcherTimer _heartTimer = new() { Interval = TimeSpan.FromMilliseconds(600) };
@@ -26,12 +27,14 @@ public partial class ViewerWindow : Window
     private readonly Random _rng = new();
     private int _lastBpm;
 
-    public ViewerWindow(string roomCode, OscService? osc = null)
+    public ViewerWindow(string roomCode, OscService? osc = null,
+                        System.Action<string, int>? onGroupBpm = null)
     {
         InitializeComponent();
 
-        _roomCode = roomCode.ToUpperInvariant();
-        _osc      = osc;
+        _roomCode    = roomCode.ToUpperInvariant();
+        _osc         = osc;
+        _onGroupBpm  = onGroupBpm;
         FriendLbl.Text = $"Partner  {_roomCode}";
 
         // Position: bottom-right, offset from broadcaster overlay
@@ -62,6 +65,7 @@ public partial class ViewerWindow : Window
             _osc.SendBpm(bpm, s.FriendHrOscParam, s.FriendHrOscParam);
         }
 
+        _onGroupBpm?.Invoke(_roomCode, bpm);
         Dispatcher.Invoke(() => UpdateBpm(bpm));
     }
 

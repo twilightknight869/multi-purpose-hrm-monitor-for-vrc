@@ -1,9 +1,7 @@
-using System.Linq;
 using System.Windows;
-using HRMMonitor.Services;
 using System.Windows.Controls;
-using System.Windows.Media;
 using Hardcodet.Wpf.TaskbarNotification;
+using HRMMonitor.Services;
 using HRMMonitor.Views;
 
 namespace HRMMonitor;
@@ -33,41 +31,18 @@ public partial class App : Application
         {
             _trayIcon = (TaskbarIcon)FindResource("TrayIcon");
 
-            // Wire context menu in code — XAML routing is unreliable for tray icons
-            var menuBg   = new SolidColorBrush(Color.FromRgb(0x0f, 0x0f, 0x18));
-            var menuFg   = new SolidColorBrush(Color.FromRgb(0xe0, 0xe0, 0xe0));
-            var hoverBg  = new SolidColorBrush(Color.FromRgb(0xe0, 0x35, 0x35));
-
-            MenuItem MakeItem(string header)
-            {
-                var item = new MenuItem
-                {
-                    Header     = header,
-                    Background = menuBg,
-                    Foreground = menuFg,
-                    FontFamily = new System.Windows.Media.FontFamily("Segoe UI"),
-                    FontSize   = 13,
-                };
-                item.MouseEnter += (s, _) => ((MenuItem)s).Background = hoverBg;
-                item.MouseLeave += (s, _) => ((MenuItem)s).Background = menuBg;
-                return item;
-            }
-
-            var openItem = MakeItem("Open HRM Monitor");
+            // Use system-styled menu — custom WPF colours fight Windows 11's tray chrome
+            var openItem = new MenuItem { Header = "Open HRM Monitor" };
             openItem.Click += (_, _) => TrayOpen_Click(this, new RoutedEventArgs());
 
-            var exitItem = MakeItem("Exit");
+            var exitItem = new MenuItem { Header = "Exit" };
             exitItem.Click += (_, _) => TrayExit_Click(this, new RoutedEventArgs());
 
             _trayIcon.ContextMenu = new ContextMenu
             {
-                Background  = menuBg,
-                BorderBrush = new SolidColorBrush(Color.FromRgb(0x2e, 0x2e, 0x48)),
-                BorderThickness = new Thickness(1),
                 Items = { openItem, new Separator(), exitItem }
             };
 
-            // Double-click also opens
             _trayIcon.TrayMouseDoubleClick += (_, _) => TrayOpen_Click(this, new RoutedEventArgs());
         }
         catch (Exception ex)
@@ -112,26 +87,24 @@ public partial class App : Application
 
     private void TrayExit_Click(object sender, RoutedEventArgs e)
     {
-        // Close the context menu before disposing — otherwise it lingers on screen
+        // Dismiss the context menu first
         if (_trayIcon?.ContextMenu != null)
             _trayIcon.ContextMenu.IsOpen = false;
 
+        // Dispose tray icon so it vanishes from the taskbar immediately
         _trayIcon?.Dispose();
         _trayIcon = null;
 
-        // Close MainWindow first — its Window_Closing handler stops the overlay,
-        // viewer windows, and all services cleanly.
+        // Close main window through its own Closing handler (stops overlay, services, etc.)
+        // Make it visible first so the Closing event fires properly
         if (_mainWindow != null)
         {
-            _mainWindow.Show();   // must be visible for Close() to fire Closing event
+            _mainWindow.Show();
             _mainWindow.Close();
         }
 
-        // Force-close any remaining windows (viewer overlays, update alerts, etc.)
-        foreach (Window w in Windows.Cast<Window>().ToList())
-            try { w.Close(); } catch { }
-
-        Shutdown();
+        // Hard shutdown — kills any remaining windows
+        Environment.Exit(0);
     }
 
     protected override void OnExit(ExitEventArgs e)

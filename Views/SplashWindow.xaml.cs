@@ -55,7 +55,7 @@ public partial class SplashWindow : Window
     {
         await Task.Delay(600);   // brief intro pause
 
-        await LogLine("ok",  $"HRM Monitor v2.0.3");
+        await LogLine("ok",  $"HRM Monitor v3.0.0");
         await LogLine("ok",  $".NET {Environment.Version}  ·  Windows");
         await Task.Delay(300);
 

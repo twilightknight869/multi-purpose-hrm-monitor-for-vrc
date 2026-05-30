@@ -86,6 +86,13 @@ public class AppSettings
         set => Set("HeartbeatSound", value);
     }
 
+    // ── Unicode emoji mode for chatbox ───────────────────────────
+    public bool UnicodeEmojiMode
+    {
+        get => GetBool("UnicodeEmoji", true);
+        set => Set("UnicodeEmoji", value);
+    }
+
     // ── Invisible chatbox background (premium/dev only) ───────────
     // Prepends zero-width + invisible Unicode chars that suppress VRChat's bubble
     public bool InvisibleChatbox
@@ -118,6 +125,13 @@ public class AppSettings
     {
         get => Get("AblyApiKey", "");
         set => Set("AblyApiKey", value);
+    }
+
+    // ── Group viewer (up to 5 friends) ───────────────────────────
+    public string GroupRoomCodes
+    {
+        get => Get("GroupRoomCodes", "");      // comma-separated room codes
+        set => Set("GroupRoomCodes", value);
     }
 
     // ── Viewer ────────────────────────────────────────────────────
@@ -172,9 +186,36 @@ public class AppSettings
         get => GetBool("SteamVrEnabled", false);
         set => Set("SteamVrEnabled", value);
     }
+    public string VrHand
+    {
+        get => Get("VrHand", "Left");
+        set => Set("VrHand", value);
+    }
+    public bool VrRaiseToView
+    {
+        get => GetBool("VrRaiseToView", true);
+        set => Set("VrRaiseToView", value);
+    }
+    public float VrOverlaySize
+    {
+        get => float.TryParse(Get("VrOverlaySize", "0.08"), out var v) ? v : 0.08f;
+        set => Set("VrOverlaySize", value.ToString());
+    }
 
     // ── Dev key password (in-memory only — never written to registry) ──
     public string DevPassword { get; set; } = "";
+
+    // ── UI Customization (premium/dev only) ──────────────────────
+    public string AccentColor
+    {
+        get => Get("AccentColor", "#FFe03535");
+        set => Set("AccentColor", value);
+    }
+    public string Theme
+    {
+        get => Get("Theme", "Dark");
+        set => Set("Theme", value);
+    }
 
     // ── Dev tag visibility toggle (devs 1-3 only) ─────────────────
     public bool ShowDevTag

@@ -62,7 +62,7 @@ if errorlevel 1 (
 )
 
 :: ── Build release notes (no dev features) ────────────────────────
-set NOTES=## HRM Monitor v%VERSION%^
+set NOTES=## HRM Monitor v%VERSION% - Major Release^
 
 ^
 
@@ -70,63 +70,65 @@ set NOTES=## HRM Monitor v%VERSION%^
 
 ^
 
-**Heart Rate Broadcasting**^
+**VR Wrist Overlay - Apple Watch Style**^
 
-- BPM shared with partner via private relay server - no rate limits, real-time updates^
+- Anchors to your hand controller and moves with your real wrist in VR^
 
-- Room codes are stable and persist between sessions^
+- Raise your wrist to view an expanded info panel (room code, group HRs, status)^
 
-- Viewer BPM display changes color with host tiers (LOW/MED/HIGH)^
+- Switch between left and right hand in settings - changes instantly^
 
-- Screen shake and heart pulse speed on viewer scales live with BPM^
+- Adjustable watch size from 4cm to 16cm^
+
+^
+
+**Group Watch - Horror Game Mode**^
+
+- Watch up to 5 friends heart rates at once^
+
+- All friend HRs show in your VR wrist panel colour-coded by tier^
+
+- Perfect for horror games - see who is scared in real time^
 
 ^
 
 **VRChat Chatbox**^
 
-- Prettier output: progress bar, tier label, clean formatting^
+- Unicode symbols now work correctly (fixed ASCII encoding bug)^
 
-- Invisible background mode - text floats in world with no grey bubble (Premium)^
+- Prettier output with progress bar and tier indicators^
 
-- All pronouns: His, Her, Their, Our, Xe/Xem, Ze/Hir, Ey/Em, Fae/Faer and more^
+- Invisible background mode - text floats with no grey bubble (Premium)^
 
-- Partner HR OSC for couples - both HRs show on avatar simultaneously^
-
-^
-
-**Overlay**^
-
-- Heartbeat sound effect synced to BPM - toggleable in Settings^
-
-- Screen shake on both broadcaster and viewer at high BPM^
-
-- Heart pulse animation speed scales live with BPM^
-
-- Right-click overlay to toggle always-on-top^
+- All pronouns: His, Her, Their, Our, Xe, Ze, Ey, Fae and more^
 
 ^
 
-**Settings and Persistence**^
+**UI and Quality of Life**^
 
-- Spotify token saved - no re-authorization needed after updates^
+- New Help tab with full setup guide and feature explanations^
 
-- All OSC settings, tokens, and customizations persist across updates^
+- Safety and transparency section with source code and VirusTotal links^
 
-- Live status panel shows Pulsoid, OSC, Chatbox, Sharing, Spotify and License status^
+- UI Customization for Premium users - accent colors and dark themes^
+
+- Spotify and SteamVR sections collapsed by default to reduce clutter^
+
+- Heartbeat sound effects synced to BPM - toggleable^
+
+- Viewer overlay now colour-coded and shakes at high BPM^
 
 ^
 
-**Bug Fixes**^
+**Reliability**^
 
-- Fixed room code changing on every BPM publish^
+- Fixed room code bug that broke friend sharing^
 
-- Fixed tray menu exit leaving context menu on screen^
+- Spotify token saved - no re-auth needed after updates^
 
-- Fixed heartbeat icon showing as question mark in VRChat chatbox^
+- Fixed tray menu and exit behaviour^
 
-- Fixed update checker triggering when already on latest version^
-
-- Fixed license check deadlocking on dev key activation^
+- Open source - build from source with build.bat^
 
 ^
 
