@@ -82,7 +82,7 @@ Requires: [.NET 8 SDK](https://dotnet.microsoft.com/download) · The script inst
 | UI accent color + theme | ❌ | ✅ |
 | Daily usage limit | 6 hrs | None |
 
-**Premium: $5/month** · Pay via CashApp `$imp4nth3r` · Get your key via Discord `/mykey`
+**Premium: $5/month** · Pay via CashApp `DOES NOT WORK YET!!` · Get your key via Discord `/mykey`
 
 ---
 
