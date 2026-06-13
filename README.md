@@ -1,5 +1,10 @@
 # HRM Monitor — Multi-Purpose Heart Rate Monitor for VRChat
+
+
 THE PYTHON VERSION IS NOW DEPRECATED PLEASE LOCATE TO V2
+
+
+
 A real-time heart rate overlay built for VRChat users. Connects to Pulsoid, displays your BPM on a desktop overlay, sends it to VRChat via OSC, shows it in the VRChat chatbox, streams it to friends, and integrates with Spotify — all in one app.
 
 > **Questions or support?** Discord: `crimsondreamz`
